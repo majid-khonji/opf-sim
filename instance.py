@@ -376,9 +376,9 @@ def sim_instance(T, scenario="FCM", F_percentage=0.2, load_theta_range=(-0.62831
         utilities = loads_S ** 2
     elif scenario[1] == 'U':  # uncorrelated
         util_func = lambda x: random.randrange(0, x)
-        utilities[0:r] = [util_func(ind_load_range[1]) for i in range(r)]
-        utilities[r:n] = [util_func(cus_load_range[1]) for i in range(n - r)]
-        utilities = np.array(utilities)
+        utilities = np.zeros(n)
+        utilities[0:r] = np.array([util_func(ind_load_range[1]) for i in range(r)])
+        utilities[r:n] = np.array([util_func(cus_load_range[1]) for i in range(n - r)])
 
     ins.loads_S = loads_S / T.graph['S_base']
     ins.loads_angles = loads_angles
@@ -455,5 +455,5 @@ if __name__ == "__main__":
 
     T = network_38node()
     # ins = rnd_instance_from_graph()
-    ins = sim_instance(T)
+    ins = sim_instance(T, scenario="FUM")
     u.print_instance(ins)
