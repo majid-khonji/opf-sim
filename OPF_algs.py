@@ -36,8 +36,7 @@ def max_OPF(ins, cons=''):
     P = {e: 0 for e in T.edges()}
     Q = {e: 0 for e in T.edges()}
     for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % k)
-    for k in ins.F:
-        x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
+    for k in ins.F: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
     for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
     for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
     for i in T.nodes()[1:]:
@@ -80,38 +79,43 @@ def max_OPF(ins, cons=''):
 
     u.handle_errors(m)
 
-    for e in T.edges():
-        z = T[e[0]][e[1]]['z']
-        logging.info('\t==== Edge: %s ===' % str(e))
-        S_ = np.sqrt(P[e].x ** 2 + Q[e].x ** 2)
-        logging.info('\t|S|          = %09.6f\t\t(diff = %e)' % (S_, S_ - T[e[0]][e[1]]['C']))
-        logging.info('\tl            = %09.6f\t\t' \
-                     '(diff = %e)' % (l[e].x, l[e].x - (P[e].x ** 2 + Q[e].x ** 2) / v[0]))
-        loss = l[e].x * np.sqrt(T[e[0]][e[1]]['z'][0] ** 2 + T[e[0]][e[1]]['z'][1] ** 2)
-        logging.info('\tLoss         = %09.6f' % (loss))
-        pure_demand_P = np.sum([ins.loads_P[k] * x[k].x for k in T[e[0]][e[1]]['K']])
-        pure_demand_Q = np.sum([ins.loads_Q[k] * x[k].x for k in T[e[0]][e[1]]['K']])
-        total_loss_P = P[e].x - pure_demand_P - dummy_p[e[1]].x
-        total_loss_Q = Q[e].x - pure_demand_Q - dummy_q[e[1]].x
-        T[e[0]][e[1]]['L'] = (total_loss_P, total_loss_Q)
-        logging.info('\tTotal loss   = %09.6f' % np.sqrt(total_loss_P ** 2 + total_loss_Q ** 2))
-        logging.info('\tPure demand  = %09.6f' % np.sqrt(pure_demand_P ** 2 + pure_demand_Q ** 2))
+    if logging.getLogger().getEffectiveLevel() == logging.INFO:
+        for e in T.edges():
+            z = T[e[0]][e[1]]['z']
+            logging.info('\t==== Edge: %s ===' % str(e))
+            S_ = np.sqrt(P[e].x ** 2 + Q[e].x ** 2)
+            logging.info('\t|S|          = %09.6f\t\t(diff = %e)' % (S_, S_ - T[e[0]][e[1]]['C']))
+            logging.info('\tl            = %09.6f\t\t' \
+                         '(diff = %e)' % (l[e].x, l[e].x - (P[e].x ** 2 + Q[e].x ** 2) / v[0]))
+            loss = l[e].x * np.sqrt(T[e[0]][e[1]]['z'][0] ** 2 + T[e[0]][e[1]]['z'][1] ** 2)
+            logging.info('\tLoss         = %09.6f' % (loss))
+            pure_demand_P = np.sum([ins.loads_P[k] * x[k].x for k in T[e[0]][e[1]]['K']])
+            pure_demand_Q = np.sum([ins.loads_Q[k] * x[k].x for k in T[e[0]][e[1]]['K']])
+            total_loss_P = P[e].x - pure_demand_P - dummy_p[e[1]].x
+            total_loss_Q = Q[e].x - pure_demand_Q - dummy_q[e[1]].x
+            T[e[0]][e[1]]['L'] = (total_loss_P, total_loss_Q)
+            logging.info('\tTotal loss   = %09.6f' % np.sqrt(total_loss_P ** 2 + total_loss_Q ** 2))
+            logging.info('\tPure demand  = %09.6f' % np.sqrt(pure_demand_P ** 2 + pure_demand_Q ** 2))
 
-        dummy = np.sqrt(dummy_p[e[1]].x ** 2 + dummy_q[e[1]].x ** 2)
-        logging.info('\t|dummy_S|    = %09.6f\t\tP,Q = (%09.6f,%09.6f)' % (dummy, dummy_p[e[1]].x, dummy_q[e[1]].x))
+            dummy = np.sqrt(dummy_p[e[1]].x ** 2 + dummy_q[e[1]].x ** 2)
+            logging.info('\t|dummy_S|    = %09.6f\t\tP,Q = (%09.6f,%09.6f)' % (dummy, dummy_p[e[1]].x, dummy_q[e[1]].x))
 
-        if (S_ != 0): logging.info('\tloss to pow. = %09.6f' % (loss / S_))
-        logging.info('\tloss to cap. = %09.6f' % (loss / T[e[0]][e[1]]['C']))
+            if (S_ != 0): logging.info('\tloss to pow. = %09.6f' % (loss / S_))
+            logging.info('\tloss to cap. = %09.6f' % (loss / T[e[0]][e[1]]['C']))
 
-        logging.info('\t=== voltages ===')
-    for i in T.nodes()[1:]:
-        logging.info('\tv_%3d        = %f\t\t(diff = %e)' % (i, v[i].x, v[i].x - ins.v_min))
+            logging.info('\t=== voltages ===')
+        for i in T.nodes()[1:]:
+            logging.info('\tv_%3d        = %f\t\t(diff = %e)' % (i, v[i].x, v[i].x - ins.v_min))
 
     sol = a.maxOPF_sol()
     sol.obj = obj.getValue()
     sol.x = {k: x[k].x for k in range(ins.n)}
     sol.idx = [k for k in ins.I if x[k].x == 1]
-    sol.status = m.status
+    sol.status = m
+    # sol.l = l.items()
+    # sol.P = P.items()
+    # sol.Q = Q.items()
+    # sol.v = v.items()
     logging.info("\tx            = %s" % str(sol.x))
     logging.info("\t{k: x_k>0}   = %s" % str([k for k in range(ins.n) if sol.x[k] > 0]))
 
@@ -120,7 +124,7 @@ def max_OPF(ins, cons=''):
     return sol
 
 
-def min_loss_OPF(ins, idx, cons=''):
+def min_loss_OPF(ins, x, cons=''):
     t1 = time.time()
     T = ins.topology
     m = gbp.Model("qcp")
@@ -137,10 +141,10 @@ def min_loss_OPF(ins, idx, cons=''):
     l = {e: 0 for e in T.edges()}
     P = {e: 0 for e in T.edges()}
     Q = {e: 0 for e in T.edges()}
-    for i in T.nodes(): dummy_p[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % i)
-    for i in T.nodes(): dummy_q[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % i)
-    for i in T.nodes()[1:]:
-        v[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="v_%d" % i)
+    for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
+    for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
+    for k in T.nodes()[1:]:
+        v[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="v_%d" % k)
     for e in T.edges(): l[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="l_%s" % str(e))
     for e in T.edges(): P[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(e))
     for e in T.edges(): Q[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="Q_%s" % str(e))
@@ -156,10 +160,10 @@ def min_loss_OPF(ins, idx, cons=''):
                      "l_%s" % str(e))  # l= |S|^2/ v_i
         m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
 
-        index_set = set(T.node[e[1]]['N']).intersection(set(idx))
-        rhs_P = l[e] * z[0] + gbp.quicksum([ins.loads_P[i] for i in index_set]) + gbp.quicksum(
+        # index_set = set(T.node[e[1]]['N']).intersection(set(idx))
+        rhs_P = l[e] * z[0] + gbp.quicksum([ins.loads_P[k] * x[k] for k in T.node[e[1]]['N']]) + gbp.quicksum(
             [P[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_p[e[1]]
-        rhs_Q = l[e] * z[1] + gbp.quicksum([ins.loads_Q[i] for i in index_set]) + gbp.quicksum(
+        rhs_Q = l[e] * z[1] + gbp.quicksum([ins.loads_Q[k] * x[k] for k in T.node[e[1]]['N']]) + gbp.quicksum(
             [Q[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_q[e[1]]
         m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
         m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
@@ -177,6 +181,7 @@ def min_loss_OPF(ins, idx, cons=''):
     m.optimize()
     sol = a.maxOPF_sol()
     sol.status = m.status
+    sol.m = m
     sol.running_time = time.time() - t1
 
     if (u.handle_errors(m) == False):
@@ -184,32 +189,33 @@ def min_loss_OPF(ins, idx, cons=''):
         return sol
     sol.obj = obj.getValue()
 
-    for e in T.edges():
-        z = T[e[0]][e[1]]['z']
-        logging.info('\t==== Edge: %s ===' % str(e))
-        S_ = np.sqrt(P[e].x ** 2 + Q[e].x ** 2)
-        logging.info('\t|S|          = %09.6f\t\t(diff = %e)' % (S_, S_ - T[e[0]][e[1]]['C']))
-        logging.info('\tl            = %09.6f\t\t(diff = %e)' % (l[e].x, l[e].x - (P[e].x ** 2 + Q[e].x ** 2) / v[0]))
-        loss = l[e].x * np.sqrt(T[e[0]][e[1]]['z'][0] ** 2 + T[e[0]][e[1]]['z'][1] ** 2)
-        logging.info('\tLoss         = %09.6f' % (loss))
+    if logging.getLogger().getEffectiveLevel() == logging.INFO:
+        for e in T.edges():
+            z = T[e[0]][e[1]]['z']
+            logging.info('\t==== Edge: %s ===' % str(e))
+            S_ = np.sqrt(P[e].x ** 2 + Q[e].x ** 2)
+            logging.info('\t|S|          = %09.6f\t\t(diff = %e)' % (S_, S_ - T[e[0]][e[1]]['C']))
+            logging.info(
+                '\tl            = %09.6f\t\t(diff = %e)' % (l[e].x, l[e].x - (P[e].x ** 2 + Q[e].x ** 2) / v[0]))
+            loss = l[e].x * np.sqrt(T[e[0]][e[1]]['z'][0] ** 2 + T[e[0]][e[1]]['z'][1] ** 2)
+            logging.info('\tLoss         = %09.6f' % (loss))
 
-        index_set = set(T[e[0]][e[1]]['K']).intersection(set(idx))
-        pure_demands_P = [ins.loads_P[i] for i in index_set]
-        pure_demands_Q = [ins.loads_Q[i] for i in index_set]
-        total_loss_P = P[e].x - sum(pure_demands_P) - dummy_p[e[1]].x
-        total_loss_Q = Q[e].x - sum(pure_demands_Q) - dummy_q[e[1]].x
-        T[e[0]][e[1]]['L'] = (total_loss_P, total_loss_Q)
-        logging.info('\tTotal loss   = %09.6f' % np.sqrt(total_loss_P ** 2 + total_loss_Q ** 2))
-        logging.info('\tPure demand  = %09.6f' % np.sqrt(sum(pure_demands_P) ** 2 + sum(pure_demands_Q) ** 2))
+            pure_demands_P = [ins.loads_P[k] * x[k] for k in T[e[0]][e[1]]['K']]
+            pure_demands_Q = [ins.loads_Q[k] * x[k] for k in T[e[0]][e[1]]['K']]
+            total_loss_P = P[e].x - sum(pure_demands_P) - dummy_p[e[1]].x
+            total_loss_Q = Q[e].x - sum(pure_demands_Q) - dummy_q[e[1]].x
+            T[e[0]][e[1]]['L'] = (total_loss_P, total_loss_Q)
+            logging.info('\tTotal loss   = %09.6f' % np.sqrt(total_loss_P ** 2 + total_loss_Q ** 2))
+            logging.info('\tPure demand  = %09.6f' % np.sqrt(sum(pure_demands_P) ** 2 + sum(pure_demands_Q) ** 2))
 
-        dummy = np.sqrt(dummy_p[e[1]].x ** 2 + dummy_q[e[1]].x ** 2)
-        logging.info('\t|dummy_S|    = %09.6f\t\tP,Q = (%09.6f,%09.6f)' % (dummy, dummy_p[e[1]].x, dummy_q[e[1]].x))
+            dummy = np.sqrt(dummy_p[e[1]].x ** 2 + dummy_q[e[1]].x ** 2)
+            logging.info('\t|dummy_S|    = %09.6f\t\tP,Q = (%09.6f,%09.6f)' % (dummy, dummy_p[e[1]].x, dummy_q[e[1]].x))
 
-        logging.info('\tloss to pow. = %09.6f' % (loss / S_))
-        logging.info('\tloss to cap. = %09.6f' % (loss / T[e[0]][e[1]]['C']))
-    logging.info('\t=== voltages ===')
-    for i in T.nodes()[1:]:
-        logging.info('\tv_%3d        = %f\t\t(diff = %e)' % (i, v[i].x, v[i].x - ins.v_min))
+            logging.info('\tloss to pow. = %09.6f' % (loss / S_))
+            logging.info('\tloss to cap. = %09.6f' % (loss / T[e[0]][e[1]]['C']))
+        logging.info('\t=== voltages ===')
+        for k in T.nodes()[1:]:
+            logging.info('\tv_%3d        = %f\t\t(diff = %e)' % (k, v[k].x, v[k].x - ins.v_min))
 
     return sol
 

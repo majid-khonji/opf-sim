@@ -5,7 +5,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-import OPF_algs as m
+import util as u
 
 ############## IMPORTANT ###########
 # index 0 is booked for the root
@@ -77,7 +77,7 @@ def rnd_path_instance(n=3, node_count=3, v_0=1, v_max=1.05, v_min=.95, capacity_
     ins.leaf_edges = [(i, nx.predecessor(T, i, 0)[0]) for i in ins.leaf_nodes]
 
     ins.topology = T
-    set_customers(ins, n=n, load_theta_range=(0,max_load_theta), max_load=max_load, util_func=util_func)
+    distribute_customers(ins, n=n, load_theta_range=(0, max_load_theta), max_load=max_load, util_func=util_func)
     return ins
 
 
@@ -115,7 +115,7 @@ def rnd_tree_instance(n=3, depth=2, branch=2, v_0=1, v_max=1.21, v_min=0.81000, 
     ins.topology = T
     ins.leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
     ins.leaf_edges = [(i, nx.predecessor(T, i, 0)[0]) for i in ins.leaf_nodes]
-    set_customers(ins, n=n, load_theta_range=(0,max_load_theta), max_load=max_load, util_func=util_func)
+    distribute_customers(ins, n=n, load_theta_range=(0, max_load_theta), max_load=max_load, util_func=util_func)
     return ins
 
 
@@ -169,9 +169,11 @@ def single_link_instance(n=10, capacity=.1, z=(.01, .01), loss_ratio=.08, Rand=T
     return ins
 
 # method = ['method1'|'method2'|'fixed']
-def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=1, v_min=0.81000, loss_ratio = .08,
+def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_ratio=.08,
         method='fixed'):
     T = nx.Graph()
+    T.graph["S_base"] = 1000000
+    T.graph["V_base"] = 12660
     T.add_edge(0,2); T[0][2]['z'] = (.000574, .000293); T[0][2]['C'] = 4.6
     T.add_edge(2,3); T[2][3]['z'] = (.00307, .001564); T[2][3]['C'] = 4.1
     T.add_edge(3,4); T[3][4]['z'] = (.002279, .001161); T[3][4]['C'] = 2.9
@@ -210,10 +212,10 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=
     T.add_edge(18,37); T[18][37]['z'] = (.003113, .003113); T[18][37]['C'] = 0.5
     T.add_edge(25,38); T[25][38]['z'] = (.003113, .003113); T[25][38]['C'] = 0.1
 
-    nx.set_edge_attributes(T, 'l', {k: 0 for k in T.edges()})  # current magnitude square
-    nx.set_edge_attributes(T, 'S', {k: (0, 0) for k in T.edges()})  # edge power [Complex num]
+    # nx.set_edge_attributes(T, 'l', {k: 0 for k in T.edges()})  # current magnitude square
+    # nx.set_edge_attributes(T, 'S', {k: (0, 0) for k in T.edges()})  # edge power [Complex num]
     nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers whos demands pass through edge e
-    nx.set_node_attributes(T, 'v', {k: 0 for k in T.nodes()})  # voltage magnitude square
+    # nx.set_node_attributes(T, 'v', {k: 0 for k in T.nodes()})  # voltage magnitude square
     nx.set_edge_attributes(T, 'L', {k: 0 for k in T.edges()})  # loss upper bound
     nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
     leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
@@ -224,17 +226,17 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=
         T.node[i]['depth'] = len(nx.shortest_path(T, 0, i)) - 1
         if T.node[i]['depth'] > max_depth: max_depth = T.node[i]['depth']
     logging.info('max depth  = %d' % max_depth)
-    
-    
+
+
     ####### method 1: pessimistic
     if method == "method1":
         max_loss_per = 0
         for e in T.edges():
             print "=== edge %s ==="%str(e)
-            C = T[e[0]][e[1]]['C']  
-            z = T[e[0]][e[1]]['z']  
+            C = T[e[0]][e[1]]['C']
+            z = T[e[0]][e[1]]['z']
             print 'C   = %.4f , |z| = %.6f'%(C,np.sqrt(z[0]**2 + z[1]**2) )
-            if e[0] == 0: # first edge 
+            if e[0] == 0:  # first edge
                 #T[e[0]][e[1]]['L'] = np.sqrt(z[0]**2 + z[1]**2)*  C**2
                 T[e[0]][e[1]]['L'] = (max_depth - T.node[e[1]]['depth']) * np.sqrt(z[0]**2 + z[1]**2)*  C**2
             else:
@@ -272,8 +274,8 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=
             print "loss of %-8s  = %.6f\t %4.2f%%"%(str(e), loss2, loss2/C)
     elif method == "fixed":
         for e in T.edges():
-            C = T[e[0]][e[1]]['C']  
-            z = T[e[0]][e[1]]['z']  
+            C = T[e[0]][e[1]]['C']
+            z = T[e[0]][e[1]]['z']
             T[e[0]][e[1]]['L'] = C*loss_ratio
             T[e[0]][e[1]]['C_'] = C*(1-loss_ratio)
             logging.info("=== edge %s ===" % str(e))
@@ -299,19 +301,17 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=
 def rnd_instance_from_graph(T, n=3, v_0=1, v_max=1.21, v_min=0.81000,
                       load_theta_range=(-0.628, 0.628), max_load = .1,
                       util_func=lambda x, y: x - x + np.random.rand()):
-    # T = nx.read_gpickle(T_file_name)
-
     # initialize
     for k in T.nodes():
         T.node[k]['N'] = []  # customers on node i
-        T.node[k]['v'] = 0   # voltage
+        # T.node[k]['v'] = 0   # voltage
 
     ins = maxOPF_instance()
     T.node[0]['v'] = ins.v_0
     ins.topology = T
+    ins.n = n
     ins.leaf_nodes = T.graph['leaf_nodes']
     ins.leaf_edges = T.graph['leaf_edges']
-
     ins.I = np.arange(n)
     ins.F = np.array([], dtype=np.int64)
 
@@ -319,23 +319,84 @@ def rnd_instance_from_graph(T, n=3, v_0=1, v_max=1.21, v_min=0.81000,
     ins.v_max = v_max
     ins.v_min = v_min
     ins.V_ = (v_0 - v_min) / 2
-    set_customers(ins, n=n, load_theta_range=load_theta_range, max_load=max_load, util_func=util_func)
-
-
-    return ins
-
-
-# topology must be filled in instance ins
-def set_customers(ins, n=3, load_theta_range=(0,0.628), max_load=2,
-                  util_func=lambda x, y: x - x + np.random.rand()):
-    T = ins.topology
-    ins.n = n
     ins.loads_S = np.random.rand(n) * max_load
     ins.loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n) * load_theta_range[0]
     ins.loads_utilities = np.array(map(util_func, ins.loads_S, ins.loads_angles))
+    distribute_customers(ins)
+    return ins
+
+
+def sim_instance(T, scenario="FCM", F_percentage=0.2, load_theta_range=(-0.6283185307179586, 0.6283185307179586), n=10,
+                 cus_load_range=(500, 5000),
+                 ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21, v_min=0.81000):
+    """
+    Generates a random instance for CKP according to ckp_sim requirements
+    """
+
+    assert (scenario[0] in ['F', 'A'] and scenario[1] in ['C', 'U', '1'] and scenario[2] in ['R', 'I', 'M'])
+    # initialize
+    for k in T.nodes():
+        T.node[k]['N'] = []  # customers on node i
+        # T.node[k]['v'] = 0   # voltage
+
+    ins = maxOPF_instance()
+    T.node[0]['v'] = ins.v_0
+    ins.topology = T
+    ins.n = n
+    ins.leaf_nodes = T.graph['leaf_nodes']
+    ins.leaf_edges = T.graph['leaf_edges']
+    ins.F = np.random.choice(n, round(F_percentage * n), replace=False)
+    ins.I = np.setdiff1d(np.arange(n), ins.F)
+    ins.v_0 = v_0
+    ins.v_max = v_max
+    ins.v_min = v_min
+    ins.V_ = (v_0 - v_min) / 2
+    loads_S = None
+    loads_angles = None
+    utilities = None
+
+    r = 0  # index at which non industrial customer start until n
+
+    if scenario[2] == 'R':  # commercial customers
+        loads_S = np.random.uniform(cus_load_range[0], cus_load_range[1], n)
+    elif scenario[2] == 'I':  # industrial
+        loads_S = np.random.uniform(0, cus_load_range[1], n)
+    elif scenario[2] == 'M':  # mixed
+        r = np.random.randint(0, round(industrial_cus_max_percentage * n))
+        industrial_loads = np.random.uniform(ind_load_range[0], ind_load_range[1], r)
+        customer_loads = np.random.uniform(cus_load_range[0], cus_load_range[1], n - r)
+        loads_S = np.append(industrial_loads, customer_loads)
+
+    if scenario[0] == 'A':  # active  only
+        loads_angles = np.zeros(n)
+    elif scenario[0] == 'F':  # full: active and reactive
+        loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n) * load_theta_range[0]
+
+    if scenario[1] == 'C':  # correlated demand/utility
+        utilities = loads_S ** 2
+    elif scenario[1] == 'U':  # uncorrelated
+        util_func = lambda x: random.randrange(0, x)
+        utilities[0:r] = [util_func(ind_load_range[1]) for i in range(r)]
+        utilities[r:n] = [util_func(cus_load_range[1]) for i in range(n - r)]
+        utilities = np.array(utilities)
+
+    ins.loads_S = loads_S / T.graph['S_base']
+    ins.loads_angles = loads_angles
+    ins.loads_utilities = utilities
+
+    # print 'loads_S ', ins.loads_S
+    # print "angles ", loads_angles
+    # print "util  ", utilities
+    distribute_customers(ins)
+
+    return ins
+
+# topology must be filled in instance ins
+def distribute_customers(ins):
+    T = ins.topology
+    n = ins.n
     ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
     ins.loads_Q = np.array(map(lambda x, t: x * np.math.sin(t), ins.loads_S, ins.loads_angles))
-    ins.max_load_theta = max(ins.loads_angles)
 
     for k in range(n):
         attached_node = np.random.choice(T.nodes()[1:])
@@ -380,6 +441,7 @@ def set_customers(ins, n=3, load_theta_range=(0,0.628), max_load=2,
 
 
 
+
 if __name__ == "__main__":
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
     # ins = rnd_tree_instance()
@@ -391,6 +453,7 @@ if __name__ == "__main__":
     # print ins.topology.node[0]
     # plt.show()
 
-    # network_38node()
-    ins = rnd_instance_from_graph()
+    T = network_38node()
+    # ins = rnd_instance_from_graph()
+    ins = sim_instance(T)
     u.print_instance(ins)
