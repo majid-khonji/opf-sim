@@ -1,40 +1,40 @@
 #! /usr/bin/python
-__author__ = 'majid'
+__author__ = 'Majid'
 import networkx as nx
 import random
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-import maxOPF_algs as m
+import OPF_algs as m
 
 ############## IMPORTANT ###########
 # index 0 is booked for the root
 # nodes numbering follows breadth first order
 ####################################
 class maxOPF_instance(object):
-    topology = None
-    leaf_edges = {}  # leaf edges
-    v_0 = 0
-    v_max = 0
-    v_min = 0
-    V_ = 0  # (v_0 - v_min )/ 2
-    n = 0  # number of customers
-    Q = {}  # Q value of each customer. Dictionary keyed by (k,i) where k is customer and i is leaf vertex
-    customer_path = {}  # path of customer k
-    customer_leaf_path = {}  # path of customer k
-    customer_node = {}  # customer to node
-    load_theta_range = (0,0)
-    loads_S = None
-    loads_P = None
-    loads_Q = None
-    loads_angles = None
-    loads_utilities = None
-
-    I = []  # idx of integer customers
-    F = []  # idx of fractional customers
-    customer_path_nodes = {}  # path of customer k
-    customer_leaf_path_nodes = {}  # path of customer k
-    leaf_nodes = {}  # leaf nodes
+    def __init__(self):
+        self.topology = None
+        self.leaf_edges = {}  # leaf edges
+        self.v_0 = 0
+        self.v_max = 0
+        self.v_min = 0
+        self.V_ = 0  # (v_0 - v_min )/ 2
+        self.n = 0  # number of customers
+        self.Q = {}  # Q value of each customer. Dictionary keyed by (k,i) where k is customer and i is leaf vertex
+        self.customer_path = {}  # path of customer k
+        self.customer_leaf_path = {}  # path of customer k
+        self.customer_node = {}  # customer to node
+        self.load_theta_range = (0, 0)
+        self.loads_S = None
+        self.loads_P = None
+        self.loads_Q = None
+        self.loads_angles = None
+        self.loads_utilities = None
+        self.I = []  # idx of integer customers
+        self.F = []  # idx of fractional customers
+        self.customer_path_nodes = {}  # path of customer k
+        self.customer_leaf_path_nodes = {}  # path of customer k
+        self.leaf_nodes = {}  # leaf nodes
 
 
 class maxOPF_sol(object):
@@ -113,22 +113,25 @@ def rnd_tree_instance(n=3, depth=2, branch=2, v_0=1, v_max=1.21, v_min=0.81000, 
     T.node[0]['v'] = ins.v_0
 
     ins.topology = T
+    ins.leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
+    ins.leaf_edges = [(i, nx.predecessor(T, i, 0)[0]) for i in ins.leaf_nodes]
     set_customers(ins, n=n, load_theta_range=(0,max_load_theta), max_load=max_load, util_func=util_func)
     return ins
 
 
-def single_link_instance(n=10, capacity=.1, z = (.01,.01),Rand = True):
+def single_link_instance(n=10, capacity=.1, z=(.01, .01), loss_ratio=.08, Rand=True):
     ins = maxOPF_instance()
     ins.n = n
     ins.I = np.arange(n)
+    ins.F = np.array([], dtype=np.int64)
     ins.v_0 = 1
     ins.v_max = 1.05
     ins.v_min = 0.81000
     ins.V_ = (ins.v_0 - ins.v_min) / 2
     T = nx.Graph()
     T.add_edge(0, 1)
-    nx.set_edge_attributes(T, 'C', {k: capacity for k in
-                                    T.edges()})  # max VA capacity
+    nx.set_edge_attributes(T, 'C', {k: capacity for k in T.edges()})  # max VA capacity
+    nx.set_edge_attributes(T, 'C_', {k: capacity * (1 - loss_ratio) for k in T.edges()})  # max VA capacity minus loss
     nx.set_edge_attributes(T, 'l', {k: 0 for k in T.edges()})  # current magnitude square
     nx.set_edge_attributes(T, 'S', {k: (0, 0) for k in T.edges()})  # edge power [Complex num]
     nx.set_edge_attributes(T, 'z', {k: z for k in T.edges()})  # impedence [complex
@@ -138,8 +141,8 @@ def single_link_instance(n=10, capacity=.1, z = (.01,.01),Rand = True):
     T.node[1]['N'] = ins.I  # customers on node i
     T.node[1]['v'] = 0  # voltage
     T.node[0]['v'] = ins.v_0
-    # ins.leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
-    # ins.leaf_edges = [(i, nx.predecessor(T, i, 0)[0]) for i in ins.leaf_nodes]
+    ins.leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
+    ins.leaf_edges = [(i, nx.predecessor(T, i, 0)[0]) for i in ins.leaf_nodes]
 
     # ins.loads_P = np.array([0.06, 1.63, 1.91, 1.47, 1.12, 1.34, 1.02, 1.66, 1.34, 0.15])
     # ins.loads_Q = np.array([0]*n)
@@ -213,13 +216,14 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=
     nx.set_node_attributes(T, 'v', {k: 0 for k in T.nodes()})  # voltage magnitude square
     nx.set_edge_attributes(T, 'L', {k: 0 for k in T.edges()})  # loss upper bound
     nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
-
     leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
+    T.graph['leaf_nodes'] = leaf_nodes
+    T.graph['leaf_edges'] = [(i, nx.predecessor(T, i, 0)[0]) for i in leaf_nodes]
     max_depth = 0
     for i in T.nodes()[1:]:
         T.node[i]['depth'] = len(nx.shortest_path(T, 0, i)) - 1
         if T.node[i]['depth'] > max_depth: max_depth = T.node[i]['depth']
-    print 'max depth  = ', max_depth
+    logging.info('max depth  = %d' % max_depth)
     
     
     ####### method 1: pessimistic
@@ -272,23 +276,11 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=
             z = T[e[0]][e[1]]['z']  
             T[e[0]][e[1]]['L'] = C*loss_ratio
             T[e[0]][e[1]]['C_'] = C*(1-loss_ratio)
-            print "=== edge %s ==="%str(e)
-            print 'C     = %.4f , |z| = %.6f'%(C,np.sqrt(z[0]**2 + z[1]**2) )
-            print 'loss  = %.6f\t %4.2f%%'%( T[e[0]][e[1]]['L'], T[e[0]][e[1]]['L']/C * 100)
-
-#    for e in T.edges():
-#        children = T[e[1]].keys()
-#        if children[0] == e[0]: children = children[1:]
-#        print 'edge %s children'%str(e), children
-
-
-
-
-
-
+            logging.info("=== edge %s ===" % str(e))
+            logging.info('C     = %.4f , |z| = %.6f' % (C, np.sqrt(z[0] ** 2 + z[1] ** 2)))
+            logging.info('loss  = %.6f\t %4.2f%%' % (T[e[0]][e[1]]['L'], T[e[0]][e[1]]['L'] / C * 100))
 
     if file != '':
-        nx.write_gml(T, file_name)
         nx.write_gpickle(T, file_name)
 
 
@@ -303,10 +295,11 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize = False,v_0=
 
     return T
 
-def rnd_instance_from_graph(T_file_name='data/38_node_test.gpickle', n=3, v_0=1, v_max=1.21, v_min=0.81000,
+
+def rnd_instance_from_graph(T, n=3, v_0=1, v_max=1.21, v_min=0.81000,
                       load_theta_range=(-0.628, 0.628), max_load = .1,
                       util_func=lambda x, y: x - x + np.random.rand()):
-    T = nx.read_gpickle(T_file_name)
+    # T = nx.read_gpickle(T_file_name)
 
     # initialize
     for k in T.nodes():
@@ -317,11 +310,11 @@ def rnd_instance_from_graph(T_file_name='data/38_node_test.gpickle', n=3, v_0=1,
     T.node[0]['v'] = ins.v_0
     ins.topology = T
     ins.leaf_nodes = T.graph['leaf_nodes']
-
-
     ins.leaf_edges = T.graph['leaf_edges']
 
     ins.I = np.arange(n)
+    ins.F = np.array([], dtype=np.int64)
+
     ins.v_0 = v_0
     ins.v_max = v_max
     ins.v_min = v_min
@@ -336,8 +329,6 @@ def rnd_instance_from_graph(T_file_name='data/38_node_test.gpickle', n=3, v_0=1,
 def set_customers(ins, n=3, load_theta_range=(0,0.628), max_load=2,
                   util_func=lambda x, y: x - x + np.random.rand()):
     T = ins.topology
-    ins.leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
-    ins.leaf_edges = [(i, nx.predecessor(T, i, 0)[0]) for i in ins.leaf_nodes]
     ins.n = n
     ins.loads_S = np.random.rand(n) * max_load
     ins.loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n) * load_theta_range[0]
@@ -376,8 +367,8 @@ def set_customers(ins, n=3, load_theta_range=(0,0.628), max_load=2,
             ins.customer_leaf_path[(k, l)] = zip(ins.customer_leaf_path_nodes[(k, l)],
                                                  ins.customer_leaf_path_nodes[(k, l)][1:])
 
-            logging.debug("shared path with leaf %d: %s" % (l, str(ins.customer_leaf_path_nodes[(k, l)])))
-            logging.debug("shared path with leaf %d: %s" % (l, str(ins.customer_leaf_path[(k, l)])))
+            logging.debug("shared path with leaf %d : %s" % (l, str(ins.customer_leaf_path_nodes[(k, l)])))
+            logging.debug("shared edges with leaf %d: %s" % (l, str(ins.customer_leaf_path[(k, l)])))
             ins.Q[(k, l)] = 0
             tmp_str = "path impedance through leaf %d: " % l
             for e in ins.customer_leaf_path[(k, l)]:
@@ -387,32 +378,6 @@ def set_customers(ins, n=3, load_theta_range=(0,0.628), max_load=2,
             logging.debug('Q[(%d,%d)]=%f' % (k, l, ins.Q[(k, l)]))
 
 
-def print_instance(ins):
-    print "===== I N S T A N C E  D I S C ====="
-    print "-- netork: "
-    print ' # nodes: ', len(ins.topology.nodes())
-    print ' # edges: ', len(ins.topology.edges())
-    # print ' Edges:', ins.topology.edges()
-    print ' Leaf nodes:', ins.leaf_nodes
-    print "-- customers:"
-    print(' util:       %s' % str({k: round(ins.loads_utilities[k],2) for k in range(ins.n)}) ) #str(map(lambda x: round(x, 2), ins.loads_utilities)))
-    print(' loads_S:    %s' % str({k: round(ins.loads_S[k],3) for k in range(ins.n)}) ) #str(map(lambda x: round(x, 2), ins.loads_S)))
-    print(' loads_P:    %s' % str({k: round(ins.loads_P[k],3) for k in range(ins.n)}) ) #str(map(lambda x: round(x, 2), ins.loads_S)))
-    print(' loads_Q:    %s' % str({k: round(ins.loads_Q[k],3) for k in range(ins.n)}) ) #str(map(lambda x: round(x, 2), ins.loads_S)))
-    print(' Q(k,l):     %s' % str({i[0]: round(i[1], 3) for i in ins.Q.iteritems()}))
-    print "-- cons: "
-    print(' C: %s' % {e: round(ins.topology[e[0]][e[1]]['C'], 3) for e in ins.topology.edges()})
-    print(' z: %s' % {e: (round(ins.topology[e[0]][e[1]]['z'][0], 3), round(ins.topology[e[0]][e[1]]['z'][1], 3)) for e in ins.topology.edges()})
-    print ' V_ = ', (ins.v_0 - ins.v_min) / 2
-    print "===================================="
-
-
-def print_customer(ins, k):
-    print('------- customer: %d -------' % k)
-    print('demand: (%f,%f)' % (ins.loads_P[k], ins.loads_Q[k]))
-    print 'Q values: ', {l: ins.Q[k:l] for l in ins.leaf_nodes}
-    print('attached bus: %d' % ins.customer_node[k])
-    print('path: %s' % str(ins.customer_path_nodes[k]))
 
 
 if __name__ == "__main__":
@@ -426,6 +391,6 @@ if __name__ == "__main__":
     # print ins.topology.node[0]
     # plt.show()
 
-    network_38node()
-    # ins = rnd_instance_from_graph()
-    # print_instance(ins)
+    # network_38node()
+    ins = rnd_instance_from_graph()
+    u.print_instance(ins)
