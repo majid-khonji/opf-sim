@@ -25,13 +25,15 @@ def sim(scenario="FCR", F_percentage=0, max_n=1500, step_n=100, start_n=100, rep
     greedy_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     greedy_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     greedy_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+    greedy_group_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
     OPT_s_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     OPT_s_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     OPT_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     OPT_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
     count = len(np.arange(start_n, max_n + 1, step_n))
-    print zip(np.arange(start_n, max_n + 1, step_n), np.arange(count))
     dump_data = {s: None for s in zip(np.arange(start_n, max_n + 1, step_n), np.arange(count))}
 
     for n in range(start_n, max_n + 1, step_n):
@@ -62,13 +64,19 @@ def sim(scenario="FCR", F_percentage=0, max_n=1500, step_n=100, start_n=100, rep
             greedy_time[(n - start_n + step_n) / step_n - 1, i] = sol.running_time
             greedy_obj[(n - start_n + step_n) / step_n - 1, i] = sol.obj
             greedy_ar[(n - start_n + step_n) / step_n - 1, i] = sol.ar
-            print "Greedy obj:    %15d  |  time: %5.3f  |  AR: %5.3f" % (
-                sol.obj, sol.running_time, sol.ar)
-
-            dump_data = {(n, i): {'sol': sol, 'sol_opt': sol_opt, 'sol_opt_s': sol_opt_s}}
-
-        # if dry_run == False: pickle.dump(dump_data, open(dump_dir + name + '.p', 'wb'))
-
+            greedy_group_count[(n - start_n + step_n) / step_n - 1, i] = len(sol.groups)
+            print "Greedy obj:    %15d  |  time: %5.3f  |  AR: %5.3f (%d groups)" % (
+                sol.obj, sol.running_time, sol.ar, len(sol.groups))
+    if dry_run == False:
+        np.savez(dump_dir + name,
+                 greedy_obj=greedy_obj,
+                 greedy_ar=greedy_ar,
+                 greedy_time=greedy_time,
+                 greedy_group_count=greedy_group_count,
+                 OPT_obj=OPT_obj,
+                 OPT_time=OPT_time,
+                 OPT_s_obj=OPT_s_obj,
+                 OPT_s_time=OPT_s_time)
     x = np.arange(start_n, max_n + 1, step_n)
     x = x.reshape((len(x), 1))
 
@@ -76,6 +84,11 @@ def sim(scenario="FCR", F_percentage=0, max_n=1500, step_n=100, start_n=100, rep
     mean_yerr_OPT_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_time)), 1)
     mean_yerr_OPT_s_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_time)), 1)
     mean_yerr_greedy_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_ar)), 1)
+    mean_yerr_greedy_group_count = np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_group_count)), 1)
+
+    mean_yerr_greedy_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_obj)), 1)
+    mean_yerr_OPT_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
+    mean_yerr_OPT_s_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_obj)), 1)
 
     print mean_yerr_greedy_ar
 
@@ -84,22 +97,26 @@ def sim(scenario="FCR", F_percentage=0, max_n=1500, step_n=100, start_n=100, rep
                  greedy_obj=greedy_obj,
                  greedy_ar=greedy_ar,
                  greedy_time=greedy_time,
+                 greedy_group_count=greedy_group_count,
                  OPT_obj=OPT_obj,
                  OPT_time=OPT_time,
                  OPT_s_obj=OPT_s_obj,
                  OPT_s_time=OPT_s_time,
                  mean_yerr_greedy_ar=mean_yerr_greedy_ar,
                  mean_yerr_greedy_time=mean_yerr_greedy_time,
+                 mean_yerr_greedy_group_count=mean_yerr_greedy_group_count,
                  mean_yerr_OPT_time=mean_yerr_OPT_time,
-                 mean_yerr_OPT_s_time=mean_yerr_OPT_s_time)
-
+                 mean_yerr_OPT_s_time=mean_yerr_OPT_s_time,
+                 mean_yerr_greedy_obj=mean_yerr_greedy_obj,
+                 mean_yerr_OPT_obj=mean_yerr_OPT_obj,
+                 mean_yerr_OPT_s_obj=mean_yerr_OPT_s_obj)
     fin_time = time.time() - t1
     m, s = divmod(fin_time, 60)
     h, m = divmod(m, 60)
-    print "\n=== simulation finished in ", fin_time, " seconds (%d:%02d:%02d) ===\n" % (h, m, s)
+    print "\n=== simulation finished in %d:%02d:%02d ===\n" % (h, m, s)
 
     return name
 
 
 if __name__ == "__main__":
-    sim(scenario="FCR", F_percentage=0.5, max_n=150, step_n=10, start_n=100, reps=5)
+    sim(scenario="FUR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=20)

@@ -1,48 +1,56 @@
 __author__ = 'mkhonji'
 import matplotlib.pyplot as plt
 import numpy as np
-import ckp_sim as s
+import util as u
 from mpl_toolkits.axes_grid1 import host_subplot
 import mpl_toolkits.axisartist as AA
 
 
-def plot_results(name, dump_dir="results/dump/", fig_dir="results/"):
+def quick_plot(name, dump_dir="results/dump/", fig_dir="results/"):
     plt.ioff()
     plt.clf()
     plt.figure(figsize=(5, 3))
     f = np.load(dump_dir + '/' + name + ".npz")
 
-    mean_yerr_greedy_ratio_obj = f["mean_yerr_greedy_ratio_obj"]
+    x = np.arange(100, 1500 + 1, 100)
+    x = x.reshape((len(x), 1))
+    print f.files
+    greedy_obj = f["greedy_obj"]
+    OPT_obj = f["OPT_obj"]
+    OPT_s_obj = f["OPT_s_obj"]
+    mean_yerr_greedy_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_obj)), 1)
+    print mean_yerr_greedy_obj
+    mean_yerr_OPT_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
+    mean_yerr_OPT_s_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_obj)), 1)
 
-    plt.errorbar(mean_yerr_greedy_ratio_obj[:, 0], mean_yerr_greedy_ratio_obj[:, 1],
-                 yerr=mean_yerr_greedy_ratio_obj[:, 2], linestyle='None', color='blue')
-    plt.plot(mean_yerr_greedy_ratio_obj[:, 0], mean_yerr_greedy_ratio_obj[:, 1], color='blue', label="GRA", linewidth=2,
+    # mean_yerr_greedy_ar = f["mean_yerr_greedy_ar"]
+    # plt.errorbar(mean_yerr_greedy_ar[:, 0], mean_yerr_greedy_ar[:, 1],
+    #              yerr=mean_yerr_greedy_ar[:, 2], linestyle='None', color='blue')
+    # plt.plot(mean_yerr_greedy_ar[:, 0], mean_yerr_greedy_ar[:, 1], color='blue', label="GRA", linewidth=2,
+    #          linestyle='-.')
+
+    plt.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
+                 yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue')
+    plt.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', label="GR", linewidth=2,
              linestyle='-.')
 
-    mean_yerr_greedy_demand_obj = f["mean_yerr_greedy_demand_obj"]
-    plt.errorbar(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1],
-                 yerr=mean_yerr_greedy_demand_obj[:, 2], linestyle='None', color='green')
-    plt.plot(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1], color='green', label="GDA",
-             linewidth=2, linestyle='--')
+    plt.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1],
+                 yerr=mean_yerr_OPT_obj[:, 2], linestyle='None', color='red')
+    plt.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label="OPT", linewidth=2,
+             linestyle='-.')
 
-    mean_yerr_greedy_val_obj = f["mean_yerr_greedy_val_obj"]
-    plt.errorbar(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1],
-                 yerr=mean_yerr_greedy_val_obj[:, 2], linestyle='None', color='black')
-    plt.plot(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1], color='black', label="GUA",
-             linewidth=2, linestyle='--')
-
-    mean_yerr_OPT_obj = f["mean_yerr_OPT_obj"]
-    plt.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], yerr=mean_yerr_OPT_obj[:, 2], color='red',
-                 linestyle='None')
-    plt.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label='OPT', linewidth=2)
+    plt.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
+                 yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
+    plt.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label="sOPT", linewidth=2,
+             linestyle='-.')
 
     # plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=4, mode="expand", borderaxespad=0.)
     plt.legend()
-    # plt.ylim([1000000000,10000000000000])
+    # plt.ylim([0,1])
     plt.xlabel("Number of customers")
     plt.ylabel("Maximized Valuation")
     plt.subplots_adjust(left=0.125, bottom=0.15, right=.9, top=.85)
-    plt.savefig(fig_dir + '/' + name + '.pdf')
+    plt.savefig(fig_dir + '/quick.pdf')
 
 
 def format_exponent(ax, axis='y', y_horz_alignment='left'):
@@ -99,66 +107,28 @@ def plot_subfig(name, ax, dump_dir, fig_dir, type="obj"):
     extension = None
     if type == "obj":
         extension = "obj"
-    elif type in ["cr", "cr_pj"]:
-        extension = "cr"
+    elif type in ["ar"]:
+        extension = "ar"
 
     f = np.load(dump_dir + '/' + name + ".npz")
-    mean_yerr_greedy_ratio_obj = f["mean_yerr_greedy_ratio_" + extension]
+    mean_yerr_greedy_obj = f["mean_yerr_greedy_obj" + extension]
 
-    ax.errorbar(mean_yerr_greedy_ratio_obj[:, 0], mean_yerr_greedy_ratio_obj[:, 1],
-                yerr=mean_yerr_greedy_ratio_obj[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_ratio_obj[:, 0], mean_yerr_greedy_ratio_obj[:, 1], color='blue', marker='.', label="GRA",
+    ax.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
+                yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue')
+    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="GRA",
             linewidth=2,
             linestyle='-.')
 
-    if type not in ["cr", "cr_pj"]:
-        mean_yerr_OPT_obj = f["mean_yerr_OPT_" + extension]
+    if type == "obj":
+        mean_yerr_OPT_obj = f["mean_yerr_OPT_obj" + extension]
         ax.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], yerr=mean_yerr_OPT_obj[:, 2], color='red',
                     linestyle='None')
         ax.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label='OPT', linewidth=2)
-        mean_yerr_greedy_demand_obj = f["mean_yerr_greedy_demand_" + extension]
-        ax.errorbar(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1],
-                    yerr=mean_yerr_greedy_demand_obj[:, 2], linestyle='None', color='green')
-        ax.plot(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1], color='green', label="GDA",
-                linewidth=2, linestyle='--')
 
-        mean_yerr_greedy_val_obj = f["mean_yerr_greedy_val_" + extension]
-        ax.errorbar(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1],
-                    yerr=mean_yerr_greedy_val_obj[:, 2], linestyle='None', color='black')
-        ax.plot(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1], color='black', label="GUA",
-                linewidth=2, linestyle='--')
-    elif type == "cr_pj":
-        # plt.rc('text', usetex=True)
-        # plt.rc('font', family='serif')
-        mean_yerr_OPT_obj = f["pj_mean_yerr_OPT_" + extension]
-        ax.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], yerr=mean_yerr_OPT_obj[:, 2], color='red',
-                    linestyle='None')
-        ax.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label=r'$\mathrm{OPT}_\mathrm{pj}$',
-                linewidth=2)
-        mean_yerr_greedy_demand_obj = f["pj_mean_yerr_greedy_demand_" + extension]
-        ax.errorbar(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1],
-                    yerr=mean_yerr_greedy_demand_obj[:, 2], linestyle='None', color='green')
-        ax.plot(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1], color='green',
-                label="$\mathrm{GDA}_\mathrm{pj}$",
-                linewidth=2, linestyle='--')
-
-        mean_yerr_greedy_val_obj = f["pj_mean_yerr_greedy_val_" + extension]
-        ax.errorbar(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1],
-                    yerr=mean_yerr_greedy_val_obj[:, 2], linestyle='None', color='black')
-        ax.plot(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1], color='black',
-                label="$\mathrm{GUA}_\mathrm{pj}$",
-                linewidth=2, linestyle='--')
-    elif type == "cr":
-        mean_yerr_greedy_demand_obj = f["mean_yerr_greedy_demand_" + extension]
-        ax.errorbar(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1],
-                    yerr=mean_yerr_greedy_demand_obj[:, 2], linestyle='None', color='green')
-        ax.plot(mean_yerr_greedy_demand_obj[:, 0], mean_yerr_greedy_demand_obj[:, 1], color='green', label="GDA",
-                linewidth=2, linestyle='--')
-
-        mean_yerr_greedy_val_obj = f["mean_yerr_greedy_val_" + extension]
-        ax.errorbar(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1],
-                    yerr=mean_yerr_greedy_val_obj[:, 2], linestyle='None', color='black')
-        ax.plot(mean_yerr_greedy_val_obj[:, 0], mean_yerr_greedy_val_obj[:, 1], color='black', label="GUA",
+        mean_yerr_OPT_s_obj = f["mean_yerr_OPT_s_obj" + extension]
+        ax.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
+                    yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
+        ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label="GDA",
                 linewidth=2, linestyle='--')
     ax.grid(True)
     # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
@@ -170,20 +140,17 @@ def plot_subfig(name, ax, dump_dir, fig_dir, type="obj"):
 
 def plot_all(dump_dir="results/dump/", fig_dir="results/", type="obj"):
     """
-
     :param dump_dir:
     :param fig_dir:
-    :param type: obj/cr/cr_pj/time
+    :param type: obj|ar
     :return:
     """
     plt.ioff()
-
     # plt.clf()
-
-    FCR_name = "ckp_sim:FCR_C=2000000_max_n=1500_step_n=100_start_n=100_reps=20"
-    FCM_name = "ckp_sim:FCM_C=2000000_max_n=1500_step_n=100_start_n=100_reps=100"
-    FUR_name = "ckp_sim:FUR_C=2000000_max_n=1500_step_n=100_start_n=100_reps=20"
-    FUM_name = "ckp_sim:FUM_C=2000000_max_n=1500_step_n=100_start_n=100_reps=100"
+    FCR_name = "FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
+    FCM_name = "FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
+    FUR_name = "FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
+    FUM_name = "FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
 
     # fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', sharey='row')
     fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
@@ -206,7 +173,7 @@ def plot_all(dump_dir="results/dump/", fig_dir="results/", type="obj"):
 
     if (type == "obj"):
         fig.text(0.00, 0.5, 'Maximized utility', ha='center', va='center', rotation='vertical', fontsize=14)
-    elif (type in ['cr', 'cr_pj']):
+    elif (type in ['ar', 'ar_pj']):
         fig.text(0.00, 0.5, 'Approximation ratio', ha='center', va='center', rotation='vertical', fontsize=14)
         fcr.set_ylim([0, 1.5])
         fcm.set_ylim([0, 1.5])
@@ -291,102 +258,6 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
     plt.savefig(fig_dir + "time.pdf", bbox_inches='tight')
 
 
-def plot_dyn_C(dump_dir="results/dump/", fig_dir="results/"):
-    plt.ioff()
-    # plt.clf()
-    FUM_name = "ckp_sim_dyn:FUM__C=2000000__T=10000__max_n=1000__reps=20__C_drop=(5,35)__failure_prob=0.65__avg_fail=200"
-    FUR_name = "ckp_sim_dyn:FUR__C=2000000__T=10000__max_n=1000__reps=20__C_drop=(5,35)__failure_prob=0.65__avg_fail=200"
-    FCM_name = "ckp_sim_dyn:FCM__C=2000000__T=10000__max_n=1000__reps=20__C_drop=(5,35)__failure_prob=0.65__avg_fail=200"
-
-    f = np.load(dump_dir + '/' + FUM_name + ".npz")
-    mean_yerr_greedy_ratio_FUM = f["mean_yerr_greedy_ratio_obj"]
-    mean_yerr_OPT_FUM = f["mean_yerr_OPT_obj"]
-    C_FUM = f["C_e"]
-
-    f = np.load(dump_dir + '/' + FUR_name + ".npz")
-    mean_yerr_greedy_ratio_FUR = f["mean_yerr_greedy_ratio_obj"]
-    mean_yerr_OPT_FUR = f["mean_yerr_OPT_obj"]
-    C_FUR = f["C_e"]
-
-
-
-
-    ###############################
-    fig, (g, g2) = plt.subplots(1, 2, sharex='col', figsize=(7, 5))
-
-    # fig = plt.figure(figsize=(7,4), sharex='col')
-    g = plt.subplot(211)
-
-    x = mean_yerr_greedy_ratio_FUM[:, 0]
-    g.errorbar(x, mean_yerr_greedy_ratio_FUM[:, 1],
-               yerr=mean_yerr_greedy_ratio_FUM[:, 2], linestyle='None', color='blue')
-    g.step(x, mean_yerr_greedy_ratio_FUM[:, 1], color='blue', label="GRA", linewidth=2,
-           linestyle='-', marker='.')
-
-    g.errorbar(x, mean_yerr_OPT_FUM[:, 1],
-               yerr=mean_yerr_OPT_FUM[:, 2], linestyle='None', color='red')
-    g.step(x, mean_yerr_OPT_FUM[:, 1], color='red', label="OPT", linewidth=2,
-           linestyle='-')
-    # plt.xticks(rotation=30)
-    g.grid(True)
-    g.set_title("UM")
-    g.set_ylim([0, 10000000])
-
-    c = g.twinx()
-    c.step(x, C_FUM, color='green', label="Capacity", linewidth=1, linestyle='-')
-    c.set_ylabel("              Capacity", color='green', fontsize=14)
-    c.set_ylim([-2000000, 2500000])
-
-    for tick in c.get_yticklabels():
-        tick.set_color('green')
-    c.get_yticklabels()[0].set_visible(False)
-    c.get_yticklabels()[1].set_visible(False)
-    c.get_yticklabels()[2].set_visible(False)
-    c.get_yticklabels()[3].set_visible(False)
-
-    format_exponent(g, 'y')
-    format_exponent(c, 'y', y_horz_alignment='right')
-    g.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=2, borderaxespad=0., fontsize=12)
-    c.legend(bbox_to_anchor=(1., 1.15, 0, 0), loc=4, ncol=1, borderaxespad=0., fontsize=12)
-    #############################
-    #############################
-    g2 = plt.subplot(212)
-    x = mean_yerr_greedy_ratio_FUR[:, 0]
-
-    g2.errorbar(x, mean_yerr_greedy_ratio_FUR[:, 1],
-                yerr=mean_yerr_greedy_ratio_FUR[:, 2], linestyle='None', color='blue')
-    g2.step(x, mean_yerr_greedy_ratio_FUR[:, 1], color='blue', label="GRA", linewidth=2,
-            linestyle='-', marker='.')
-
-
-    # print mean_yerr_OPT_FUR[:, 1]
-    # print mean_yerr_greedy_ratio_FUR[:,1]
-    g2.errorbar(x, mean_yerr_OPT_FUR[:, 1],
-                yerr=mean_yerr_OPT_FUR[:, 2], linestyle='None', color='red')
-    g2.step(x, mean_yerr_OPT_FUR[:, 1], color='red', label="OPT", linewidth=2,
-            linestyle='-')
-    # plt.xticks(rotation=30)
-    g2.grid(True)
-    g2.set_title("UR")
-    g2.set_ylim([0, 5000000])
-
-    c2 = g2.twinx()
-    c2.step(x, C_FUR, color='green', label="Capacity", linewidth=1, linestyle='-')
-    c2.set_ylabel("              Capacity", color='green', fontsize=14)
-    c2.set_ylim([-2000000, 2500000])
-    g2.set_xlim([0, 10000])
-
-    for tick in c2.get_yticklabels():
-        tick.set_color('green')
-    c2.get_yticklabels()[0].set_visible(False)
-    c2.get_yticklabels()[1].set_visible(False)
-    c2.get_yticklabels()[2].set_visible(False)
-    c2.get_yticklabels()[3].set_visible(False)
-    format_exponent(g2, 'y')
-    format_exponent(c2, 'y', y_horz_alignment='right')
-
-    fig.text(0.5, 0.01, 'Time', ha='center', va='center', fontsize=14)
-    fig.text(-0.01, 0.5, 'Maximized utility', ha='center', va='center', rotation='vertical', fontsize=14)
-    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
-
-    plt.savefig(fig_dir + "dyn.pdf", bbox_inches='tight')
+if __name__ == "__main__":
+    quick_plot(name="FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
+    quick_plot(name="FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
