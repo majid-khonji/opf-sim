@@ -10,22 +10,15 @@ import util as u
 try:
     import gurobipy as gbp
 except ImportError:
-    logging.error("Grubi not available!!")
+    logging.warning("Grubi not available!!")
 
 
-def max_OPF(ins, cons=''):
+def max_OPF_OPT(ins, cons=''):
     t1 = time.time()
 
     T = ins.topology
     m = gbp.Model("qcp")
-    m.setParam("OutputFlag", 0)
-    m.setParam("TimeLimit", 200)
-    # m.setParam("MIPGapAbs", 0.000001)
-    m.setParam("MIPGapAbs", 0)
-    # m.setParam("MIPGap", 0)
-    # m.setParam("SolutionLimit", 1)
-    m.setParam("IntFeasTol", 1e-9)  # for integrality difference
-    m.setParam("FeasibilityTol", 1e-9)
+    u.gurobi_setting(m)
 
     x = [0] * ins.n
     dummy_p = {i: 0 for i in T.nodes()}
@@ -77,7 +70,7 @@ def max_OPF(ins, cons=''):
     m.update()
     m.optimize()
 
-    u.handle_errors(m)
+    u.gurobi_handle_errors(m)
 
     if logging.getLogger().getEffectiveLevel() == logging.INFO:
         for e in T.edges():
@@ -128,11 +121,7 @@ def min_loss_OPF(ins, x, cons=''):
     t1 = time.time()
     T = ins.topology
     m = gbp.Model("qcp")
-    m.setParam("OutputFlag", 0)
-    m.setParam("TimeLimit", 200)
-    m.setParam("MIPGapAbs", 0)
-    m.setParam("IntFeasTol", 1e-9)  # for integrality difference
-    m.setParam("FeasibilityTol", 1e-9)
+    u.gurobi_setting(m)
 
     dummy_p = {i: 0 for i in T.nodes()}
     dummy_q = {i: 0 for i in T.nodes()}
@@ -184,7 +173,7 @@ def min_loss_OPF(ins, x, cons=''):
     sol.m = m
     sol.running_time = time.time() - t1
 
-    if (u.handle_errors(m) == False):
+    if (u.gurobi_handle_errors(m) == False):
         sol.obj = -np.inf
         return sol
     sol.obj = obj.getValue()
@@ -295,7 +284,7 @@ def max_loss(topology, e=(0, 1), v_0=1, v_min=.82, cons=''):
         m.update()
     m.optimize()
 
-    u.handle_errors(m)
+    u.gurobi_handle_errors(m)
 
     for e in T.edges():
         z = T[e[0]][e[1]]['z']

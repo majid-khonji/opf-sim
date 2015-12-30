@@ -5,7 +5,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-import util as u
+# import util as u
 
 ############## IMPORTANT ###########
 # index 0 is booked for the root
@@ -212,7 +212,18 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
     T.add_edge(18,37); T[18][37]['z'] = (.003113, .003113); T[18][37]['C'] = 0.5
     T.add_edge(25,38); T[25][38]['z'] = (.003113, .003113); T[25][38]['C'] = 0.1
 
+    # max_z_theta = 0
+    # for e in T.edges():
+    #     re = T[e[0]][e[1]]['z'][0]
+    #     im = T[e[0]][e[1]]['z'][1]
+    #     ang = np.arctan(im/re)
+    #     print 'ang of %s is '%str(e), ang*180/np.pi
+    #     if ang > max_z_theta: max_z_theta = ang
+    # print 'max load angle ', max_z_theta * 180/np.pi
+
+
     # nx.set_edge_attributes(T, 'l', {k: 0 for k in T.edges()})  # current magnitude square
+    # nx.set_edge_attributes(T, 'S', {k: (0, 0) for k in T.edges()})  # edge power [Complex num]
     # nx.set_edge_attributes(T, 'S', {k: (0, 0) for k in T.edges()})  # edge power [Complex num]
     nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers whos demands pass through edge e
     # nx.set_node_attributes(T, 'v', {k: 0 for k in T.nodes()})  # voltage magnitude square
@@ -326,8 +337,8 @@ def rnd_instance_from_graph(T, n=3, v_0=1, v_max=1.21, v_min=0.81000,
     return ins
 
 
-def sim_instance(T, scenario="FCM", F_percentage=0.2, load_theta_range=(-0.6283185307179586, 0.6283185307179586), n=10,
-                 cus_load_range=(500, 5000),
+def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(-0.6283185307179586, 0.6283185307179586), n=10,
+                 cus_load_range=(500, 5000), capacity_flag='C_',
                  ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21, v_min=0.81000):
     """
     Generates a random instance for CKP according to ckp_sim requirements
@@ -360,7 +371,7 @@ def sim_instance(T, scenario="FCM", F_percentage=0.2, load_theta_range=(-0.62831
     if scenario[2] == 'R':  # commercial customers
         loads_S = np.random.uniform(cus_load_range[0], cus_load_range[1], n)
     elif scenario[2] == 'I':  # industrial
-        loads_S = np.random.uniform(0, cus_load_range[1], n)
+        loads_S = np.random.uniform(0, ind_load_range[1], n)
     elif scenario[2] == 'M':  # mixed
         r = np.random.randint(0, round(industrial_cus_max_percentage * n))
         industrial_loads = np.random.uniform(ind_load_range[0], ind_load_range[1], r)
@@ -384,15 +395,14 @@ def sim_instance(T, scenario="FCM", F_percentage=0.2, load_theta_range=(-0.62831
     ins.loads_angles = loads_angles
     ins.loads_utilities = utilities
 
-    # print 'loads_S ', ins.loads_S
     # print "angles ", loads_angles
     # print "util  ", utilities
-    distribute_customers(ins)
+    distribute_customers(ins, capacity_flag=capacity_flag)
 
     return ins
 
 # topology must be filled in instance ins
-def distribute_customers(ins):
+def distribute_customers(ins, capacity_flag='C_'):
     T = ins.topology
     n = ins.n
     ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
@@ -400,6 +410,11 @@ def distribute_customers(ins):
 
     for k in range(n):
         attached_node = np.random.choice(T.nodes()[1:])
+        parent = nx.predecessor(T,0, attached_node)[0]
+        while ins.loads_S[k] > T[parent][attached_node][capacity_flag] :
+            attached_node = np.random.choice(T.nodes()[1:])
+            parent = nx.predecessor(T,0, attached_node)[0]
+
         T.node[attached_node]['N'].append(k)
         ins.customer_node[k] = attached_node
         ins.customer_path_nodes[k] = nx.shortest_path(T, 0, attached_node)
@@ -408,9 +423,10 @@ def distribute_customers(ins):
 
         #########
         logging.debug('------- customer: %d -------' % k)
-        logging.debug('demand: (%f,%f)' % (ins.loads_P[k], ins.loads_Q[k]))
+        logging.debug('demand      : (%f,%f)' % (ins.loads_P[k], ins.loads_Q[k]))
+        logging.debug('S           : %f' % (ins.loads_S[k]))
         logging.debug('attached bus: %d' % attached_node)
-        logging.debug('path: %s' % str(ins.customer_path_nodes[k]))
+        logging.debug('path        : %s' % str(ins.customer_path_nodes[k]))
         #########
         for l in ins.leaf_nodes:
             logging.debug('---')
@@ -455,5 +471,5 @@ if __name__ == "__main__":
 
     T = network_38node()
     # ins = rnd_instance_from_graph()
-    ins = sim_instance(T, scenario="FUM")
-    u.print_instance(ins)
+    ins = sim_instance(T, scenario="FUI", n = 1, ind_load_range=(1000000,4000000))
+    # u.print_instance(ins)

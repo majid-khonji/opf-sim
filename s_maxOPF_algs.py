@@ -11,7 +11,7 @@ import util as u
 import OPF_algs as o
 
 try: import gurobipy as gbp
-except ImportError: logging.error("Grubi not available!!")
+except ImportError: logging.warning("Grubi not available!!")
 
 
 # cons = ["C" | "V" | ""] determines which constraint to consider
@@ -78,11 +78,74 @@ def greedy_card(ins, cons='', fixed_demands_P=None, fixed_demands_Q=None, capaci
 
     sol.running_time = time.time() - t1
     return sol
-
+def check_feasibility(ins, x, capacity_flag='C_'):
+    T = ins.topology
+    for e in T.edges():
+        pure_demand_P = np.sum([ins.loads_P[k] * x[k] for k in T[e[0]][e[1]]['K']])
+        pure_demand_Q = np.sum([ins.loads_Q[k] * x[k] for k in T[e[0]][e[1]]['K']])
+        S = np.sqrt(pure_demand_P**2 + pure_demand_Q**2)
+        C = T[e[0]][e[1]][capacity_flag]
+        if S > C:
+            print 'S = %.3f, C = %.3f'%(S,C)
+            return False
+    return True
 
 # cons = ["C" | "V" | ""] determines which constraint to consider
 # capacity_flag = ['C_'|'C'] tell which edge attribute in ins.topology corresponds to capacity
 def greedy(ins, cons='', capacity_flag='C_', fixed_demands_P=None, fixed_demands_Q=None):
+    ins_g = copy.copy(ins)
+    t1 = time.time()
+    L = np.max(ins.loads_utilities) / (ins.n ** 2 * 1.)
+    rounded_util = np.floor(ins.loads_utilities/L)
+
+    # logging.info('rounded util: %s' % str(rounded_util))
+    I = ins.I.copy()
+    # print 'initial I', I
+    N = {}
+
+    set_0 = np.argwhere((0 <= rounded_util)*(rounded_util <= 1)).ravel()
+    set_0 = np.intersect1d(set_0, ins.I)
+    if set_0.size != 0:
+        N[0] = set_0
+        I = np.setdiff1d(I, N[0])
+    i = 0
+    while I.size != 0:
+        i += 1
+        set_i = np.argwhere((2**i <= rounded_util)* (rounded_util < 2**(i+1))).ravel()
+        set_i = np.intersect1d(set_i,ins.I)
+        if set_i.size != 0:
+            N[i] = set_i
+            I = np.setdiff1d(I, N[i])
+            # print 'N[%d]= '%i, N[i]
+            # print 'util = ', [rounded_util[k] for k in N[i]]
+    groups = N.keys()
+    max_sol = a.maxOPF_sol()
+    max_sol.obj = 0
+    for i in groups:
+        ins_g.I = N[i]
+        # logging.info('group(%d)' % i)
+        sol = greedy_card(ins_g, cons, fixed_demands_P=fixed_demands_P, fixed_demands_Q=fixed_demands_Q,
+                          capacity_flag=capacity_flag)
+        obj_val = np.sum(ins_g.loads_utilities[sol.idx])
+        # logging.info('         obj val = %f' % (obj_val))
+        # logging.info('         sol idx = %s' % str(sol.idx))
+        if obj_val > max_sol.obj:
+            max_sol.obj = obj_val
+            max_sol.idx = sol.idx
+
+    max_sol.x = {k: 0 for k in ins.I}
+    for k in max_sol.idx: max_sol.x[k] = 1
+    max_sol.groups = groups
+    max_sol.running_time = time.time() - t1
+    # print 'actual obj = ', max_sol.obj
+    # print 'idx', max_sol.idx
+    # print 'I', ins.I
+    # print '  sure?    = ', sum([ins.loads_utilities[k]*max_sol.x[k] for k in ins.I])
+    return max_sol
+
+# cons = ["C" | "V" | ""] determines which constraint to consider
+# capacity_flag = ['C_'|'C'] tell which edge attribute in ins.topology corresponds to capacity
+def greedy_slow(ins, cons='', capacity_flag='C_', fixed_demands_P=None, fixed_demands_Q=None):
     ins_g = copy.copy(ins)
     t1 = time.time()
     L = np.max(ins.loads_utilities) / (ins.n ** 2 * 1.)
@@ -128,14 +191,14 @@ def greedy(ins, cons='', capacity_flag='C_', fixed_demands_P=None, fixed_demands
     max_sol.running_time = time.time() - t1
     return max_sol
 
-
 # cons = ["C" | "V" | ""] determines which constraint to consider
 # capacity_flag = ['C_'|'C'] tell which edge attribute in ins.topology corresponds to capacity
 def mixed_greedy(ins, cons='', capacity_flag='C_'):
+    t1 = time.time()
     ins2 = copy.copy(ins)
     ins2.F = np.append(ins.F, ins.I)
     ins2.I = np.array([])
-    sol_f = o.max_OPF(ins2, cons)
+    sol_f = o.max_OPF_OPT(ins2, cons)
     # ins2.I = np.array([k for k,v in sol_f.x.iteritems() if (1-epsilon<= sol_f.x[k]<= 1+epsilon)  and k in ins.I])
     ins2.I = ins.I  # np.array([k for k,v in sol_f.x.iteritems() if ((1-epsilon<= sol_f.x[k]<= 1+epsilon) or (-epsilon<= sol_f.x[k]<= epsilon)) and k in ins.I])
     ins2.F = np.array([])
@@ -153,8 +216,10 @@ def mixed_greedy(ins, cons='', capacity_flag='C_'):
     sol_g = greedy(ins2, cons=cons, fixed_demands_P=fixed_demands_P, fixed_demands_Q=fixed_demands_Q,
                    capacity_flag='C_')
 
+    # print 'x ', sol_g.x
     fraction_obj = np.sum(ins.loads_utilities[k] * sol_f.x[k] for k in ins.F)
     # print 'actual obj = ', sol_g.obj
+    # print '  sure?    = ', sum([ins2.loads_utilities[k]*sol_g.x[k] for k in ins.I])
     # print 'added _obj = ', fraction_obj
     fraction_x = {k: sol_f.x[k] for k in ins.F}
     sol_g.x.update(fraction_x)
@@ -162,8 +227,54 @@ def mixed_greedy(ins, cons='', capacity_flag='C_'):
     # print 'greedy full sol = ', sol_g.x
 
     sol_g.obj += fraction_obj
+    sol_g.running_time = time.time() - t1
 
     return sol_g
+# estimate loss through small steps
+def adaptive_greedy(ins,  cons='', loss_step = .005):
+   
+    ins2 = copy.copy(ins)
+    T = ins2.topology
+    loss_ratio = 0
+    for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']
+    sol = None
+    if ins.F.size == 0: sol = greedy(ins,cons,capacity_flag='C_')
+    else: sol = mixed_greedy(ins2,cons,capacity_flag='C_')
+    _sol_ = o.min_loss_OPF(ins2,sol.x)
+    attemps = 0
+    while _sol_.obj == -np.infty:
+        attemps+=1
+        loss_ratio += loss_step
+        for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']*(1-loss_ratio)
+        if ins.F.size == 0: sol = greedy(ins,cons,capacity_flag='C_')
+        else: sol = mixed_greedy(ins2,cons,capacity_flag='C_')
+        _sol_ = o.min_loss_OPF(ins2,sol.x)
+        # print attemps,
+    sol.loss_ratio = loss_ratio
+
+    return sol
+
+# estimate loss through small steps
+def adaptive_OPT(ins,  cons='', loss_step = .005):
+    ins2 = copy.copy(ins)
+    T = ins2.topology
+    loss_ratio = 0
+    for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']
+    sol = OPT(ins2,cons,capacity_flag='C_')
+    _sol_ = o.min_loss_OPF(ins2,sol.x)
+    attemps = 0
+    while _sol_.obj == -np.infty:
+        attemps+=1
+        loss_ratio += loss_step
+        for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']*(1-loss_ratio)
+        sol = OPT(ins2,cons,capacity_flag='C_')
+        _sol_ = o.min_loss_OPF(ins2,sol.x)
+        # print attemps,
+    sol.loss_ratio = loss_ratio
+
+    return sol
+
+
 
 
 # cons = ["C" | "V" | ""] determines which constraint to consider
@@ -172,13 +283,7 @@ def OPT_slow(ins, cons='', capacity_flag='C_'):
     t1 = time.time()
     T = ins.topology
     m = gbp.Model("qcp")
-    m.setParam("OutputFlag", 0)
-    m.setParam("TimeLimit", 200)
-    # m.setParam("MIPGapAbs", 0.000001)
-    m.setParam("MIPGapAbs", 0)
-    # m.setParam("MIPGap", 0)
-    # m.setParam("SolutionLimit", 1)
-    m.setParam("IntFeasTol", 0.000000001)
+    u.gurobi_setting(m)
 
     x = {k: 0 for k in range(ins.n)}
     for i in ins.I: x[i] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % i)
@@ -212,7 +317,7 @@ def OPT_slow(ins, cons='', capacity_flag='C_'):
     sol = a.maxOPF_sol()
     sol.status = m.status
     sol.running_time = time.time() - t1
-    if (u.handle_errors(m) == False):
+    if (u.gurobi_handle_errors(m) == False):
         sol.obj = -np.inf
         return sol
     sol.obj = obj.getValue()
@@ -232,16 +337,16 @@ def OPT(ins, cons='', capacity_flag='C_'):
     t1 = time.time()
     T = ins.topology
     m = gbp.Model("qcp")
-    m.setParam("OutputFlag", 0)
-    m.setParam("TimeLimit", 200)
-    m.setParam("MIPGapAbs", 0)
-    m.setParam("IntFeasTol", 0.000000001)
-
+    u.gurobi_setting(m)
     x = {k: 0 for k in range(ins.n)}
     P = {e: 0 for e in T.edges()}
     Q = {e: 0 for e in T.edges()}
     v = {i: 0 for i in T.nodes()}
     v[0] = ins.v_0
+    dummy_p = {i: 0 for i in T.nodes()}
+    dummy_q = {i: 0 for i in T.nodes()}
+    for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
+    for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
     for i in ins.I: x[i] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % i)
     for i in ins.F: x[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % i)
     for e in T.edges(): P[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(e))
@@ -254,10 +359,11 @@ def OPT(ins, cons='', capacity_flag='C_'):
     m.setObjective(obj, gbp.GRB.MAXIMIZE)
 
     for e in T.edges():
+        m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
         rhs_P = gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [P[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h])
+            [P[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_p[e[1]]
         rhs_Q = gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [Q[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h])
+            [Q[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_q[e[1]]
         m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
         m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
 
@@ -279,7 +385,7 @@ def OPT(ins, cons='', capacity_flag='C_'):
     sol = a.maxOPF_sol()
     sol.status = m.status
     sol.running_time = time.time() - t1
-    if (u.handle_errors(m) == False):
+    if (u.gurobi_handle_errors(m) == False):
         sol.obj = -np.inf
         return sol
     sol.obj = obj.getValue()
@@ -309,39 +415,65 @@ if __name__ == "__main__":
     # ins = a.rnd_tree_instance(n=1000, depth=10, branch=2, capacity_range=(50, 50), util_func=lambda x,y: x-x + x**2)
     # ins = a.rnd_path_instance(n=100,node_count=10, capacity_range=(30, 50))
     T = a.network_38node(loss_ratio=.05)
-    ins = a.rnd_instance_from_graph(T, n=100)
+    ins = a.sim_instance(T, scenario='FUR', n = 1000,F_percentage=.0)
+    # ins = a.rnd_instance_from_graph(T, n=1000)
+    # ins = a.sim_instance(T, scenario='FCM', n = 100)
     # ins = a.single_link_instance(capacity=10,n=100)
-    ins.loads_utilities = np.ones(ins.n)
+    # ins.loads_utilities = np.ones(ins.n)
     # ins.loads_Q = np.zeros(ins.n)
     # ins.loads_S = ins.loads_P
     # ins.F = ins.I[80:100]
     # ins.I = ins.I[0:80]
     #    u.print_instance(ins)
 
-    print '----- OPT ------'
-    sol2 = OPT_slow(ins, cons='C', capacity_flag='C')
-    print 'obj value: ', sol2.obj
-    # print 'obj x: ', sol2.x
-    print 'sol x = %s' % str(map(lambda a: round(a, 2), sol2.x))
-    print 'time: ', sol2.running_time
+    # print '----- OPT ------'
+    # sol2 = OPT_slow(ins, cons='C', capacity_flag='C')
+    # print 'slow, obj value: ', sol2.obj
+    # print sol2.x.values()
+    # print check_feasibility(ins,sol2.x)
+    sol2 = OPT(ins, cons='C', capacity_flag='C_')
+    print 'OPT, obj value     : ', sol2.obj
 
-    print '----- mixed greedy ------'
-    sol_f = mixed_greedy(ins, cons='C', capacity_flag='C_')
-    sol_f.ar = sol_f.obj / sol2.obj
-    print "max value =", sol_f.obj
-    print 'max sol x = %s' % str(map(lambda a: round(a, 2), sol_f.x))
-    print '# groups: ', len(sol_f.groups)
-    print 'time: ', sol_f.running_time
-    #    print '----- greedy ------'
-    #    sol_f = greedy(ins, cons='C', capacity_flag='C')
+    sol2 = adaptive_OPT(ins, cons='C')
+    print 'adaptive, obj value: ', sol2.obj
+    print 'loss ratio ', sol2.loss_ratio
+
+    # print sol2.x.values()
+    # print check_feasibility(ins,sol2.x)
+    # print 'loss = ', sol2.loss_ratio
+    # print 'obj x: ', sol2.x
+    # print 'sol x = %s' % str(map(lambda a: round(a, 2), sol2.x))
+    # print 'time: ', sol2.running_time
+
+    # print '----- mixed greedy ------'
+    # sol_f = mixed_greedy(ins, cons='C', capacity_flag='C_')
+    # sol_f.ar = sol_f.obj / sol2.obj
+    # print "max value =", sol_f.obj
+    # print 'again     =', sum([ins.loads_utilities[k]*sol_f.x[k] for k in range(ins.n)])
+    # print 'max sol x = %s' % str(map(lambda a: round(a, 2), sol_f.x))
+    # print 'len x', len(sol_f.x)
+    # print '# groups: ', len(sol_f.groups)
+    # print 'time: ', sol_f.running_time
+    # print '----- greedy slow ------'
+    # t1 = time.time()
+    # sol_f = greedy_slow(ins, cons='C', capacity_flag='C')
+    # print 'in %f sec'% (time.time() - t1)
     #    sol_f.ar = sol_f.obj/sol2.obj
-    #    print "max value =",  sol_f.obj
+    # print "max value =",  sol_f.obj
+
+    # print '----- greedy fast ------'
+    # t1 = time.time()
+    # sol_f = greedy(ins, cons='C', capacity_flag='C')
+
+    # print 'in %f sec'% (time.time() - t1)
+    #    sol_f.ar = sol_f.obj/sol2.obj
+    # print "max value =",  sol_f.obj
     #    print 'max sol idx = %s' % str(sol_f.idx)
     #    print 'max sol idx = %s' % str(sol_f.idx)
     #    print '# groups: ', len(sol_f.groups)
     #    print 'time: ', sol_f.running_time
 
-    print '\n=== ratio %.3f ===' % sol_f.ar
+    # print '\n=== ratio %.3f ===' % sol_f.ar
 
 
 

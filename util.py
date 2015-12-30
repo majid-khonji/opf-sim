@@ -10,18 +10,31 @@ except ImportError:
     logging.warning("Grubi not available!!")
 
 
-def handle_errors(m):
+def gurobi_setting(m):
+    m.setParam("OutputFlag", 0)
+    m.setParam("TimeLimit", 200)
+    m.setParam("MIPGapAbs", 0.000001)
+    # m.setParam("MIPGapAbs", 0)
+    # m.setParam("MIPGap", 0)
+    # m.setParam("SolutionLimit", 1)
+    m.setParam("IntFeasTol", 0.000001)
+    m.setParam("NumericFocus",0) #0 automatic, 1-3 means how hard gurobi check numeric accuracty
+
+def gurobi_handle_errors(m):
     if m.status != gbp.GRB.status.OPTIMAL:
-        # print("\t!!!!!!! Gurobi returned a non-OPT solution !!!!!!!!")
+        # print("\t!!!!!!! Gurobi returned a non-OPT solution: status %d!!!!!!!!"%m.status)
         if (m.status == 3):
-            logging.warning("infeasible!")
+            logging.info("Infeasible!")
             return False
         if (m.status == 9):
-            logging.warning(' Time out!')
+            logging.info(' Time out!')
         elif (m.status == 13):
-            logging.warning(' Suboptimal solution!')
-        elif (m.status != 13):  # not even suboptimal
-            logging.warning(' Failure')
+            logging.info(' SUBOPTIMAL 13	Unable to satisfy optimality tolerances; a sub-optimal solution is available.')
+        elif m.status == 12:
+            logging.info("NUMERIC: Optimization was terminated due to unrecoverable numerical difficulties.")
+            return False
+        else:
+            logging.info(' Failure: status %d'%m.status)
             return False
         return True
 

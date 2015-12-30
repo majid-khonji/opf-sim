@@ -2,6 +2,7 @@ __author__ = 'mkhonji'
 import matplotlib.pyplot as plt
 import numpy as np
 import util as u
+
 from mpl_toolkits.axes_grid1 import host_subplot
 import mpl_toolkits.axisartist as AA
 
@@ -23,11 +24,6 @@ def quick_plot(name, dump_dir="results/dump/", fig_dir="results/"):
     mean_yerr_OPT_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
     mean_yerr_OPT_s_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_obj)), 1)
 
-    # mean_yerr_greedy_ar = f["mean_yerr_greedy_ar"]
-    # plt.errorbar(mean_yerr_greedy_ar[:, 0], mean_yerr_greedy_ar[:, 1],
-    #              yerr=mean_yerr_greedy_ar[:, 2], linestyle='None', color='blue')
-    # plt.plot(mean_yerr_greedy_ar[:, 0], mean_yerr_greedy_ar[:, 1], color='blue', label="GRA", linewidth=2,
-    #          linestyle='-.')
 
     plt.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
                  yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue')
@@ -56,7 +52,7 @@ def quick_plot(name, dump_dir="results/dump/", fig_dir="results/"):
 def format_exponent(ax, axis='y', y_horz_alignment='left'):
     # Change the ticklabel format to scientific format
     # ax.ticklabel_format(axis=axis, style='sci', scilimits=(-2, 2))
-    ax.ticklabel_format(axis=axis, style='sci', scilimits=(0, 0))
+    ax.ticklabel_format(axis=axis, style='sci', scilimits=(0, 4))
 
     # Get the appropriate axis
     if axis == 'y':
@@ -103,140 +99,426 @@ def format_exponent(ax, axis='y', y_horz_alignment='left'):
     return ax
 
 
-def plot_subfig(name, ax, dump_dir, fig_dir, type="obj"):
-    extension = None
-    if type == "obj":
-        extension = "obj"
-    elif type in ["ar"]:
-        extension = "ar"
+def plot_subfig_obj(name, ax, dump_dir):
 
     f = np.load(dump_dir + '/' + name + ".npz")
-    mean_yerr_greedy_obj = f["mean_yerr_greedy_obj" + extension]
+    greedy_obj = f["greedy_obj"]
+    OPT_obj = f["OPT_obj"]
+    OPT_s_obj = f["OPT_s_obj"]
+    x = np.arange(100, 1500 + 1, 100)
+    x = x.reshape((len(x), 1))
+    mean_yerr_greedy_obj = f['mean_yerr_greedy_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_obj)), 1)
+    mean_yerr_OPT_obj = f['mean_yerr_OPT_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
+    mean_yerr_OPT_s_obj = f['mean_yerr_OPT_s_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_obj)), 1)
 
     ax.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
                 yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="GRA",
+    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="IDA",
             linewidth=2,
             linestyle='-.')
 
-    if type == "obj":
-        mean_yerr_OPT_obj = f["mean_yerr_OPT_obj" + extension]
-        ax.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], yerr=mean_yerr_OPT_obj[:, 2], color='red',
-                    linestyle='None')
-        ax.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label='OPT', linewidth=2)
+    ax.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], yerr=mean_yerr_OPT_obj[:, 2], color='red',
+                linestyle='None')
+    ax.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label=r'OPT', linewidth=2)
 
-        mean_yerr_OPT_s_obj = f["mean_yerr_OPT_s_obj" + extension]
-        ax.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
-                    yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
-        ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label="GDA",
-                linewidth=2, linestyle='--')
+
+    ax.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
+                yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
+    ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label=r"OPT(s)",
+            linewidth=2, linestyle='--')
     ax.grid(True)
     # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
     format_exponent(ax, 'y')
+
     for tick in ax.get_xticklabels():
         tick.set_rotation(30)
     ax.set_xlim([100, 1500])
 
+def plot_subfig_ar(name, ax, dump_dir, ar_type='opt(s)'):
 
-def plot_all(dump_dir="results/dump/", fig_dir="results/", type="obj"):
+    x = np.arange(100, 1000 + 1, 100)
+    x = x.reshape((len(x), 1))
+
+    mean_yerr_greedy_00 = None; mean_yerr_greedy_25 = None;mean_yerr_greedy_50 = None;mean_yerr_greedy_75 = None;
+
+    if ar_type =='opt':
+        f = np.load(dump_dir + '/' + name[0] + ".npz")
+        mean_yerr_greedy_00 = f["mean_yerr_greedy_ar"]
+        f = np.load(dump_dir + '/' + name[1] + ".npz")
+        mean_yerr_greedy_25 = f["mean_yerr_greedy_ar"]
+        f = np.load(dump_dir + '/' + name[2] + ".npz")
+        mean_yerr_greedy_50 = f["mean_yerr_greedy_ar"]
+        f = np.load(dump_dir + '/' + name[3] + ".npz")
+        mean_yerr_greedy_75 = f["mean_yerr_greedy_ar"]
+    elif ar_type =='opt(s)':
+        f = np.load(dump_dir + '/' + name[0] + ".npz")
+        greedy_obj = f["greedy_obj"]
+        OPT_s_obj = f["OPT_s_obj"]
+
+
+
+
+
+        # for a,b in zip(np.nditer(greedy_obj),np.nditer(OPT_s_obj)):
+        #     print a,b
+        greedy_ar = greedy_obj/OPT_s_obj
+        # print greedy_ar.shape
+        # greedy_ar = greedy_obj[np.where(greedy_obj <= OPT_s_obj)]/OPT_s_obj[np.where(greedy_obj <= OPT_s_obj)]
+        # print greedy_ar.shape
+        # OPT_s_obj = f["OPT_obj"]
+        # print np.where(OPT_s_obj<greedy_obj)
+        mean_yerr_greedy_00 =np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_ar)), 1)
+
+        # for r in enumerate(OPT_s_obj):
+        #     print 'opt: ', OPT_s_obj[r[0]]
+        #     print 'grd: ', greedy_obj[r[0]]
+        #     print 'ar: ', greedy_ar[r[0]]
+        #     print '-----'
+
+
+
+        f = np.load(dump_dir + '/' + name[1] + ".npz")
+        greedy_obj = f["greedy_obj"]
+        OPT_s_obj = f["OPT_s_obj"]
+        greedy_ar = greedy_obj/OPT_s_obj
+        mean_yerr_greedy_25 =np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_ar)), 1)
+
+        f = np.load(dump_dir + '/' + name[2] + ".npz")
+        greedy_obj = f["greedy_obj"]
+        OPT_s_obj = f["OPT_s_obj"]
+        greedy_ar = greedy_obj/OPT_s_obj
+        mean_yerr_greedy_50 =np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_ar)), 1)
+
+        f = np.load(dump_dir + '/' + name[3] + ".npz")
+        greedy_obj = f["greedy_obj"]
+        OPT_s_obj = f["OPT_s_obj"]
+        greedy_ar = greedy_obj/OPT_s_obj
+        mean_yerr_greedy_75 =np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_ar)), 1)
+
+    ax.errorbar(mean_yerr_greedy_00[:, 0], mean_yerr_greedy_00[:, 1],
+                yerr=mean_yerr_greedy_00[:, 2], linestyle='None', color='blue')
+    ax.plot(mean_yerr_greedy_00[:, 0], mean_yerr_greedy_00[:, 1], color='blue', marker='.', label="0%",
+            linewidth=2,
+            linestyle='-.')
+
+    ax.errorbar(mean_yerr_greedy_25[:, 0], mean_yerr_greedy_25[:, 1], yerr=mean_yerr_greedy_25[:, 2], color='red',
+                linestyle='None')
+    ax.plot(mean_yerr_greedy_25[:, 0], mean_yerr_greedy_25[:, 1], color='red', label=r'25%', linewidth=2)
+
+
+    ax.errorbar(mean_yerr_greedy_50[:, 0], mean_yerr_greedy_50[:, 1],
+                yerr=mean_yerr_greedy_50[:, 2], linestyle='None', color='green')
+    ax.plot(mean_yerr_greedy_50[:, 0], mean_yerr_greedy_50[:, 1], color='green', label=r"50%",
+            linewidth=2, linestyle='--')
+
+    ax.errorbar(mean_yerr_greedy_75[:, 0], mean_yerr_greedy_75[:, 1],
+                yerr=mean_yerr_greedy_75[:, 2], linestyle='None', color='black')
+    ax.plot(mean_yerr_greedy_75[:, 0], mean_yerr_greedy_75[:, 1], color='black', label=r"75%",
+            linewidth=2, linestyle='--')
+    ax.grid(True)
+    ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+
+    for tick in ax.get_xticklabels():
+        tick.set_rotation(30)
+    ax.set_xlim([100, 1500])
+
+def plot_subfig_time(name, ax, dump_dir):
+
+    f = np.load(dump_dir + '/' + name + ".npz")
+    mean_yerr_greedy_time = f['mean_yerr_greedy_time']
+    # mean_yerr_greedy_time[:,1:] = 1000 * mean_yerr_greedy_time[:,1:]
+    mean_yerr_OPT_time = f['mean_yerr_OPT_time']
+    # mean_yerr_OPT_time[:,1:] = 1000 * mean_yerr_OPT_time[:,1:]
+    mean_yerr_OPT_s_time = f['mean_yerr_OPT_s_time']
+
+    ax.errorbar(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1],
+                yerr=mean_yerr_greedy_time[:, 2], linestyle='None', color='blue')
+    ax.plot(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1], color='blue', marker='.', label="IDA",
+            linewidth=2,
+            linestyle='-.')
+
+    c = ax.twinx()
+    # c.set_ylabel("Capacity", color='green', fontsize=14)
+
+    c.errorbar(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], yerr=mean_yerr_OPT_time[:, 2], color='red',
+                linestyle='None')
+    c.plot(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], color='red', label=r'OPT', linewidth=2)
+
+
+    # c.errorbar(mean_yerr_OPT_s_time[:, 0], mean_yerr_OPT_s_time[:, 1],
+    #             yerr=mean_yerr_OPT_s_time[:, 2], linestyle='None', color='green')
+    # c.plot(mean_yerr_OPT_s_time[:, 0], mean_yerr_OPT_s_time[:, 1], color='green', label=r"OPT(s)",
+    #         linewidth=2, linestyle='--')
+    ax.set_ylim([0,.900])
+    ax.grid(True)
+    c.grid(True)
+    # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    # format_exponent(ax, 'y')
+    # format_exponent(c, 'y', y_horz_alignment='right')
+
+    for tick in c.get_yticklabels():
+        tick.set_color('red')
+    for tick in ax.get_yticklabels():
+        tick.set_color('blue')
+
+    for tick in ax.get_xticklabels():
+        tick.set_rotation(30)
+    ax.set_xlim([100, 2050])
+
+    return c
+def plot_subfig_loss(name, ax, dump_dir):
+
+    f = np.load(dump_dir + '/' + name + ".npz")
+    greedy_loss = 100*f["adaptive_greedy_loss_ratio"]
+    OPT_s_loss= 100*f["adaptive_greedy_loss_ratio"]
+    print  name
+    print 'max greedy loss %.3f %%'% np.max(greedy_loss)
+    print 'max OPT(s) loss %.3f %%'% np.max(OPT_s_loss)
+    print '=========================='
+
+    x = np.arange(100, 1000 + 1, 100)
+    x = x.reshape((len(x), 1))
+    mean_yerr_greedy_loss = np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_loss)), 1)
+    mean_yerr_OPT_s_loss = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_loss)), 1)
+
+    ax.errorbar(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1],
+                yerr=mean_yerr_greedy_loss[:, 2], linestyle='None', color='blue')
+    ax.plot(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1], color='blue', marker='.', label="IDA",
+            linewidth=2,
+            linestyle='-.')
+
+
+    ax.errorbar(mean_yerr_OPT_s_loss[:, 0], mean_yerr_OPT_s_loss[:, 1],
+                yerr=mean_yerr_OPT_s_loss[:, 2], linestyle='None', color='green')
+    ax.plot(mean_yerr_OPT_s_loss[:, 0], mean_yerr_OPT_s_loss[:, 1], color='green', label=r"OPT(s)",
+            linewidth=2, linestyle='--')
+    ax.grid(True)
+    # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    # format_exponent(ax, 'y')
+
+    for tick in ax.get_xticklabels():
+        tick.set_rotation(30)
+    ax.set_xlim([100, 1050])
+    ax.set_ylim([0, 2])
+def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
     """
     :param dump_dir:
     :param fig_dir:
-    :param type: obj|ar
     :return:
     """
     plt.ioff()
     # plt.clf()
-    FCR_name = "FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
-    FCM_name = "FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
-    FUR_name = "FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
-    FUM_name = "FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20"
+    FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
+    FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
+    FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
+    FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
 
     # fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', sharey='row')
     fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
 
-    plot_subfig(name=FCR_name, ax=fcr, dump_dir=dump_dir, fig_dir=fig_dir, type=type)
+    plot_subfig_obj(name=FCR_name, ax=fcr, dump_dir=dump_dir)
     fcr.set_title('CR')
 
     fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
-    plot_subfig(name=FCM_name, ax=fcm, dump_dir=dump_dir, fig_dir=fig_dir, type=type)
+    plot_subfig_obj(name=FCM_name, ax=fcm, dump_dir=dump_dir)
     fcm.set_title('CM')
+    fcm.set_ylim([0,5*10**12])
 
-    plot_subfig(name=FUR_name, ax=fur, dump_dir=dump_dir, fig_dir=fig_dir, type=type)
+    plot_subfig_obj(name=FUR_name, ax=fur, dump_dir=dump_dir)
     fur.set_title('UR')
 
-    plot_subfig(name=FUM_name, ax=fum, dump_dir=dump_dir, fig_dir=fig_dir, type=type)
+    plot_subfig_obj(name=FUM_name, ax=fum, dump_dir=dump_dir)
+    fum.set_title('UM')
+    fum.set_ylim([0,1.2*10**7])
+
+    fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
+
+    fig.text(0.00, 0.5, 'Maximized utility', ha='center', va='center', rotation='vertical', fontsize=14)
+
+    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
+    plt.savefig(fig_dir + "obj_adapt.pdf", bbox_inches='tight')
+
+
+def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt(s)"):
+    """
+    :param dump_dir:
+    :param fig_dir:
+    :param type: "opt"|"opt(s)"  (calculate approximation ratio vs opt or opt(s)
+    :return:
+    """
+    plt.ioff()
+    # plt.clf()
+    FCR_name = ["adapt__FCR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40",
+                "adapt__FCR_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=40",
+                "adapt__FCR_F_percentage=0.50_max_n=1000_step_n=100_start_n=100_reps=40",
+                "adapt__FCR_F_percentage=0.75_max_n=1000_step_n=100_start_n=100_reps=40"]
+    FCM_name = ["adapt__FCM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100",
+                "adapt__FCM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100",
+                "adapt__FCM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100",
+                "adapt__FCM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100"]
+    FUR_name = ["adapt__FUR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40",
+                "adapt__FUR_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=40",
+                "adapt__FUR_F_percentage=0.50_max_n=1000_step_n=100_start_n=100_reps=40",
+                "adapt__FUR_F_percentage=0.75_max_n=1000_step_n=100_start_n=100_reps=40"]
+    FUM_name = ["adapt__FUM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100",
+                "adapt__FUM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100",
+                "adapt__FUM_F_percentage=0.50_max_n=1000_step_n=100_start_n=100_reps=100",
+                "adapt__FUM_F_percentage=0.75_max_n=1000_step_n=100_start_n=100_reps=100"]
+
+    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
+
+    plot_subfig_ar(name=FCR_name, ax=fcr, dump_dir=dump_dir, ar_type=ar_type)
+    fcr.set_title('CR')
+
+    fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+
+    plot_subfig_ar(name=FCM_name, ax=fcm, dump_dir=dump_dir, ar_type=ar_type)
+    fcm.set_title('CM')
+
+    plot_subfig_ar(name=FUR_name, ax=fur, dump_dir=dump_dir, ar_type=ar_type)
+    fur.set_title('UR')
+
+    plot_subfig_ar(name=FUM_name, ax=fum, dump_dir=dump_dir, ar_type=ar_type)
     fum.set_title('UM')
 
     fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
 
-    if (type == "obj"):
-        fig.text(0.00, 0.5, 'Maximized utility', ha='center', va='center', rotation='vertical', fontsize=14)
-    elif (type in ['ar', 'ar_pj']):
-        fig.text(0.00, 0.5, 'Approximation ratio', ha='center', va='center', rotation='vertical', fontsize=14)
-        fcr.set_ylim([0, 1.5])
-        fcm.set_ylim([0, 1.5])
-        fur.set_ylim([0, 1.5])
-        fum.set_ylim([0, 1.5])
+    fig.text(0.00, 0.5, 'Approximation ratio', ha='center', va='center', rotation='vertical', fontsize=14)
+    fcr.set_ylim([0, 1.2])
+    fcm.set_ylim([0, 1.2])
+    fur.set_ylim([0, 1.2])
+    fum.set_ylim([0, 1.2])
 
     plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
-    plt.savefig(fig_dir + type + ".pdf", bbox_inches='tight')
+    plt.savefig(fig_dir +"ar_"+ar_type+"_adapt.pdf", bbox_inches='tight')
+
+def plot_all_time(dump_dir="results/dump/", fig_dir="results/"):
+    """
+    :param dump_dir:
+    :param fig_dir:
+    :return:
+    """
+    plt.ioff()
+    # plt.clf()
+    FCR_name = "FCR_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+    FCM_name = "FCM_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+    FUR_name = "FUR_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+    FUM_name = "FUM_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+
+    # fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', sharey='row')
+    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
+
+    c=plot_subfig_time(name=FCR_name, ax=fcr, dump_dir=dump_dir)
+    fcr.set_title('CR')
+    fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+    c.legend(bbox_to_anchor=(2.3, 1.15, 0, 0), loc=4, ncol=1, borderaxespad=0., fontsize=12)
+    fcr.set_ylim([0,1])
+    # c.set_ylim([0,80000])
+
+    plot_subfig_time(name=FCM_name, ax=fcm, dump_dir=dump_dir)
+    fcm.set_title('CM')
+    fcm.set_ylim([0,1])
+
+    c = plot_subfig_time(name=FUR_name, ax=fur, dump_dir=dump_dir)
+    fur.set_title('UR')
+    fur.set_ylim([0,1])
+    # c.set_ylim([0,4000])
+
+    plot_subfig_time(name=FUM_name, ax=fum, dump_dir=dump_dir)
+    fum.set_title('UM')
+    fum.set_ylim([0,1])
+
+    fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
+
+    fig.text(0.00, 0.5, 'Running Time (seconds)', ha='center', va='center', rotation='vertical', fontsize=14)
+    # fig.text(-0.01, 0.5, 'Running time (milliseconds)', ha='center', va='center', rotation='vertical', fontsize=14)
+
+    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
+    plt.savefig(fig_dir + "time_all.pdf", bbox_inches='tight')
+
+def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
+    """
+    :param dump_dir:
+    :param fig_dir:
+    :return:
+    """
+    plt.ioff()
+    # plt.clf()
+    # FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
+    FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
+    # FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
+    FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
+
+    # fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', sharey='row')
+    fig, (fcm, fum) = plt.subplots(1, 2, figsize=(7, 3))
+
+    # plot_subfig_loss(name=FCR_name, ax=fcr, dump_dir=dump_dir)
+    # fcr.set_title('CR')
 
 
+
+    plot_subfig_loss(name=FCM_name, ax=fcm, dump_dir=dump_dir)
+    fcm.set_title('CM')
+    fcm.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+    # fcm.set_ylim([0,5*10**12])
+
+    # plot_subfig_loss(name=FUR_name, ax=fur, dump_dir=dump_dir)
+    # fur.set_title('UR')
+
+    plot_subfig_loss(name=FUM_name, ax=fum, dump_dir=dump_dir)
+    fum.set_title('UM')
+    # fum.set_ylim([0,1.2*10**7])
+
+    fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
+
+    fig.text(0.00, 0.5, 'Average Loss %', ha='center', va='center', rotation='vertical', fontsize=14)
+
+    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
+    plt.savefig(fig_dir + "loss_adapt.pdf", bbox_inches='tight')
 def plot_time(dump_dir="results/dump/", fig_dir="results/"):
     # plt.clf()
-    FCR_name = "ckp_sim:FCR_C=2000000_max_n=1500_step_n=100_start_n=100_reps=20"
-    FCM_name = "ckp_sim:FCM_C=2000000_max_n=1500_step_n=100_start_n=100_reps=100"
-    FUR_name = "ckp_sim:FUR_C=2000000_max_n=1500_step_n=100_start_n=100_reps=20"
-    FUM_name = "ckp_sim:FUM_C=2000000_max_n=1500_step_n=100_start_n=100_reps=100"
-    max_n = 1500;
+    FCR_name = "slow_FCR_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+    FCM_name = "FCM_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+    FUR_name = "FUR_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+    FUM_name = "FUM_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
+    max_n = 2000;
     step_n = 100;
     start_n = 100;
-    reps = 20
 
     f = np.load(dump_dir + '/' + FCR_name + ".npz")
-    mean_yerr_greedy_ratio_FCR = f["mean_yerr_greedy_ratio_time"]
-    f = np.load(dump_dir + '/' + FCM_name + ".npz")
-    mean_yerr_greedy_ratio_FCM = f["mean_yerr_greedy_ratio_time"]
-    f = np.load(dump_dir + '/' + FUR_name + ".npz")
-    mean_yerr_greedy_ratio_FUR = f["mean_yerr_greedy_ratio_time"]
-    f = np.load(dump_dir + '/' + FUM_name + ".npz")
-    mean_yerr_greedy_ratio_FUM = f["mean_yerr_greedy_ratio_time"]
-
-    f = np.load(dump_dir + '/' + FCR_name + ".npz")
-    greedy_ratio_FCR = f["greedy_ratio_time"]
+    greedy_FCR = f["greedy_time"]
     OPT_FCR = f["OPT_time"]
     f = np.load(dump_dir + '/' + FCM_name + ".npz")
-    greedy_ratio_FCM = f["greedy_ratio_time"]
+    greedy_FCM = f["greedy_time"]
     OPT_FCM = f["OPT_time"]
     f = np.load(dump_dir + '/' + FUR_name + ".npz")
-    greedy_ratio_FUR = f["greedy_ratio_time"]
+    greedy_FUR = f["greedy_time"]
     OPT_FUR = f["OPT_time"]
     f = np.load(dump_dir + '/' + FUM_name + ".npz")
-    greedy_ratio_FUM = f["greedy_ratio_time"]
+    greedy_FUM = f["greedy_time"]
     OPT_FUM = f["OPT_time"]
 
-    gr_time = 1000 * np.append(np.append(greedy_ratio_FCR, greedy_ratio_FCM, 1),
-                               np.append(greedy_ratio_FUR, greedy_ratio_FUM, 1), 1)
+    gr_time = 1000 * np.append(np.append(greedy_FCR, greedy_FCM, 1),
+                               np.append(greedy_FUR, greedy_FUM, 1), 1)
     OPT_time = 1000 * np.append(np.append(OPT_FCR, OPT_FCM, 1), np.append(OPT_FUR, OPT_FUM, 1), 1)
 
     x = np.arange(start_n, max_n + 1, step_n)
     x = x.reshape((len(x), 1))
-    mean_yerr_gr_time = np.append(x, np.array(map(lambda y: s.mean_yerr(y), gr_time)), 1)
-    mean_yerr_OPT_time = np.append(x, np.array(map(lambda y: s.mean_yerr(y), OPT_time)), 1)
+    mean_yerr_gr_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), gr_time)), 1)
+    mean_yerr_OPT_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_time)), 1)
 
     fig = plt.figure(figsize=(7, 3))
     g = plt.subplot(121)
     g.errorbar(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1],
                yerr=mean_yerr_gr_time[:, 2], linestyle='None', color='blue')
-    g.plot(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1], color='blue', label="GRA", linewidth=2,
+    g.plot(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1], color='blue', label="IDA", linewidth=2,
            linestyle='-', marker='.')
     plt.xticks(rotation=35)
     plt.legend(loc=2)
     # plt.ylabel("Running time", fontsize=14)
-    plt.ylim([0, 40])
-    plt.xlim([100, 1500])
+    plt.ylim([0, 500])
+    plt.xlim([100, 2050])
     g.grid(True)
     format_exponent(g, 'y')
 
@@ -247,8 +529,8 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
            linestyle='-')
     plt.xticks(rotation=35)
     plt.legend(loc=2)
-    plt.ylim([0, 40000])
-    plt.xlim([100, 1500])
+    plt.ylim([0, 25000])
+    plt.xlim([100, 2050])
     o.grid(True)
     format_exponent(o, 'y')
 
@@ -259,5 +541,9 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
 
 
 if __name__ == "__main__":
-    quick_plot(name="FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
-    quick_plot(name="FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
+    # quick_plot(name="FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
+    # plot_all_obj()
+    # plot_all_ar(ar_type="opt(s)")
+    # plot_all_time()
+    plot_all_loss()
+    # plot_time()
