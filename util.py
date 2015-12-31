@@ -24,17 +24,17 @@ def gurobi_handle_errors(m):
     if m.status != gbp.GRB.status.OPTIMAL:
         # print("\t!!!!!!! Gurobi returned a non-OPT solution: status %d!!!!!!!!"%m.status)
         if (m.status == 3):
-            logging.info("Infeasible!")
+            logging.warning("Infeasible!")
             return False
         if (m.status == 9):
-            logging.info(' Time out!')
+            logging.warning(' Time out!')
         elif (m.status == 13):
-            logging.info(' SUBOPTIMAL 13	Unable to satisfy optimality tolerances; a sub-optimal solution is available.')
+            logging.warning(' SUBOPTIMAL 13	Unable to satisfy optimality tolerances; a sub-optimal solution is available.')
         elif m.status == 12:
-            logging.info("NUMERIC: Optimization was terminated due to unrecoverable numerical difficulties.")
+            logging.warning("NUMERIC: Optimization was terminated due to unrecoverable numerical difficulties.")
             return False
         else:
-            logging.info(' Failure: status %d'%m.status)
+            logging.warning(' Failure: status %d'%m.status)
             return False
         return True
 

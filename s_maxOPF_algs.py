@@ -214,7 +214,7 @@ def mixed_greedy(ins, cons='', capacity_flag='C_'):
         # T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C_'] - np.sqrt(fixed_demands_P**2 + fixed_demands_Q**2)
 
     sol_g = greedy(ins2, cons=cons, fixed_demands_P=fixed_demands_P, fixed_demands_Q=fixed_demands_Q,
-                   capacity_flag='C_')
+                   capacity_flag=capacity_flag)
 
     # print 'x ', sol_g.x
     fraction_obj = np.sum(ins.loads_utilities[k] * sol_f.x[k] for k in ins.F)
@@ -232,7 +232,8 @@ def mixed_greedy(ins, cons='', capacity_flag='C_'):
     return sol_g
 # estimate loss through small steps
 def adaptive_greedy(ins,  cons='', loss_step = .005):
-   
+
+    t1 = time.time()
     ins2 = copy.copy(ins)
     T = ins2.topology
     loss_ratio = 0
@@ -249,13 +250,19 @@ def adaptive_greedy(ins,  cons='', loss_step = .005):
         if ins.F.size == 0: sol = greedy(ins,cons,capacity_flag='C_')
         else: sol = mixed_greedy(ins2,cons,capacity_flag='C_')
         _sol_ = o.min_loss_OPF(ins2,sol.x)
+        if loss_ratio > .1:
+            print '   greedy loss increased more than 10%. something wrong!!'
+            break
+        # print '  greedy_loss_ratio = %.4f'%loss_ratio
         # print attemps,
     sol.loss_ratio = loss_ratio
+    sol.running_time = time.time() - t1
 
     return sol
 
 # estimate loss through small steps
 def adaptive_OPT(ins,  cons='', loss_step = .005):
+    t1 = time.time()
     ins2 = copy.copy(ins)
     T = ins2.topology
     loss_ratio = 0
@@ -269,9 +276,13 @@ def adaptive_OPT(ins,  cons='', loss_step = .005):
         for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']*(1-loss_ratio)
         sol = OPT(ins2,cons,capacity_flag='C_')
         _sol_ = o.min_loss_OPF(ins2,sol.x)
+        # print '  OPT_s_loss_ratio = %.4f'%loss_ratio
         # print attemps,
+        if loss_ratio > .1:
+            print '   OPT_s loss increased more than 10%. something wrong!!'
+            break
     sol.loss_ratio = loss_ratio
-
+    sol.running_time = time.time() - t1
     return sol
 
 

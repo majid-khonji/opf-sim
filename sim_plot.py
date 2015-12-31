@@ -136,7 +136,7 @@ def plot_subfig_obj(name, ax, dump_dir):
 
 def plot_subfig_ar(name, ax, dump_dir, ar_type='opt(s)'):
 
-    x = np.arange(100, 1000 + 1, 100)
+    x = np.arange(100, 1500 + 1, 100)
     x = x.reshape((len(x), 1))
 
     mean_yerr_greedy_00 = None; mean_yerr_greedy_25 = None;mean_yerr_greedy_50 = None;mean_yerr_greedy_75 = None;
@@ -270,13 +270,13 @@ def plot_subfig_loss(name, ax, dump_dir):
 
     f = np.load(dump_dir + '/' + name + ".npz")
     greedy_loss = 100*f["adaptive_greedy_loss_ratio"]
-    OPT_s_loss= 100*f["adaptive_greedy_loss_ratio"]
+    OPT_s_loss= 100*f["adaptive_OPT_s_loss_ratio"]
     print  name
     print 'max greedy loss %.3f %%'% np.max(greedy_loss)
     print 'max OPT(s) loss %.3f %%'% np.max(OPT_s_loss)
     print '=========================='
 
-    x = np.arange(100, 1000 + 1, 100)
+    x = np.arange(100, 1500 + 1, 100)
     x = x.reshape((len(x), 1))
     mean_yerr_greedy_loss = np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_loss)), 1)
     mean_yerr_OPT_s_loss = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_loss)), 1)
@@ -298,8 +298,8 @@ def plot_subfig_loss(name, ax, dump_dir):
 
     for tick in ax.get_xticklabels():
         tick.set_rotation(30)
-    ax.set_xlim([100, 1050])
-    ax.set_ylim([0, 2])
+    ax.set_xlim([100, 1500])
+    ax.set_ylim([0, 4])
 def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
     """
     :param dump_dir:
@@ -308,10 +308,10 @@ def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
     """
     plt.ioff()
     # plt.clf()
-    FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
-    FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
-    FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
-    FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
+    FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+    FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
 
     # fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', sharey='row')
     fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
@@ -349,22 +349,22 @@ def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt(s)"):
     """
     plt.ioff()
     # plt.clf()
-    FCR_name = ["adapt__FCR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40",
-                "adapt__FCR_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=40",
-                "adapt__FCR_F_percentage=0.50_max_n=1000_step_n=100_start_n=100_reps=40",
-                "adapt__FCR_F_percentage=0.75_max_n=1000_step_n=100_start_n=100_reps=40"]
-    FCM_name = ["adapt__FCM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100",
-                "adapt__FCM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100",
-                "adapt__FCM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100",
-                "adapt__FCM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100"]
-    FUR_name = ["adapt__FUR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40",
-                "adapt__FUR_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=40",
-                "adapt__FUR_F_percentage=0.50_max_n=1000_step_n=100_start_n=100_reps=40",
-                "adapt__FUR_F_percentage=0.75_max_n=1000_step_n=100_start_n=100_reps=40"]
-    FUM_name = ["adapt__FUM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100",
-                "adapt__FUM_F_percentage=0.25_max_n=1000_step_n=100_start_n=100_reps=100",
-                "adapt__FUM_F_percentage=0.50_max_n=1000_step_n=100_start_n=100_reps=100",
-                "adapt__FUM_F_percentage=0.75_max_n=1000_step_n=100_start_n=100_reps=100"]
+    FCR_name = ["adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                "adapt__FCR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                "adapt__FCR_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                "adapt__FCR_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+    FCM_name = ["adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100",
+                "adapt__FCM_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=100",
+                "adapt__FCM_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=100",
+                "adapt__FCM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=10"] ###### FIX THIS GUY ####
+    FUR_name = ["adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                "adapt__FUR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                "adapt__FUR_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                "adapt__FUR_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+    FUM_name = ["adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100",
+                "adapt__FUM_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=100",
+                "adapt__FUM_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=100",
+                "adapt__FUM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=100"]
 
     fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
 
@@ -445,26 +445,28 @@ def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
     """
     plt.ioff()
     # plt.clf()
-    # FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
-    FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
-    # FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=40"
-    FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1000_step_n=100_start_n=100_reps=100"
+    FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+    FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
 
-    # fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', sharey='row')
-    fig, (fcm, fum) = plt.subplots(1, 2, figsize=(7, 3))
 
-    # plot_subfig_loss(name=FCR_name, ax=fcr, dump_dir=dump_dir)
-    # fcr.set_title('CR')
+
+    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7,5))
+    # fig, (fcm, fum) = plt.subplots(1, 2, figsize=(7, 3))
+
+    plot_subfig_loss(name=FCR_name, ax=fcr, dump_dir=dump_dir)
+    fcr.set_title('CR')
+    fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
 
 
     plot_subfig_loss(name=FCM_name, ax=fcm, dump_dir=dump_dir)
     fcm.set_title('CM')
-    fcm.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
     # fcm.set_ylim([0,5*10**12])
 
-    # plot_subfig_loss(name=FUR_name, ax=fur, dump_dir=dump_dir)
-    # fur.set_title('UR')
+    plot_subfig_loss(name=FUR_name, ax=fur, dump_dir=dump_dir)
+    fur.set_title('UR')
 
     plot_subfig_loss(name=FUM_name, ax=fum, dump_dir=dump_dir)
     fum.set_title('UM')
@@ -543,7 +545,7 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
 if __name__ == "__main__":
     # quick_plot(name="FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
     # plot_all_obj()
-    # plot_all_ar(ar_type="opt(s)")
+    # plot_all_ar(ar_type="opt")
     # plot_all_time()
     plot_all_loss()
     # plot_time()

@@ -107,22 +107,22 @@ def sim(scenario="FCR", F_percentage=0, max_n=1500, step_n=100, start_n=100, rep
                 if is_adaptive_loss:
                     adaptive_greedy_loss_ratio[(n - start_n + step_n) / step_n - 1, i] = sol.loss_ratio
                     adaptive_OPT_s_loss_ratio[(n - start_n + step_n) / step_n - 1, i] = sol_opt_s.loss_ratio
-    # intermediate saving
-    if dry_run == False:
-        np.savez(dump_dir + name,
-                 greedy_obj=greedy_obj,
-                 greedy_ar=greedy_ar,
-                 greedy_ar2=greedy_ar2,
-                 greedy_time=greedy_time,
-                 greedy_group_count=greedy_group_count,
-                 sub_optimal1_count_per_iteration=sub_optimal1_count_per_iteration,
-                 sub_optimal2_count_per_iteration=sub_optimal2_count_per_iteration,
-                 adaptive_greedy_loss_ratio=adaptive_greedy_loss_ratio,
-                 adaptive_OPT_s_loss_ratio=adaptive_OPT_s_loss_ratio,
-                 OPT_obj=OPT_obj,
-                 OPT_time=OPT_time,
-                 OPT_s_obj=OPT_s_obj,
-                 OPT_s_time=OPT_s_time)
+        # intermediate saving
+        if dry_run == False:
+            np.savez(dump_dir + name,
+                     greedy_obj=greedy_obj,
+                     greedy_ar=greedy_ar,
+                     greedy_ar2=greedy_ar2,
+                     greedy_time=greedy_time,
+                     greedy_group_count=greedy_group_count,
+                     sub_optimal1_count_per_iteration=sub_optimal1_count_per_iteration,
+                     sub_optimal2_count_per_iteration=sub_optimal2_count_per_iteration,
+                     adaptive_greedy_loss_ratio=adaptive_greedy_loss_ratio,
+                     adaptive_OPT_s_loss_ratio=adaptive_OPT_s_loss_ratio,
+                     OPT_obj=OPT_obj,
+                     OPT_time=OPT_time,
+                     OPT_s_obj=OPT_s_obj,
+                     OPT_s_time=OPT_s_time)
     x = np.arange(start_n, max_n + 1, step_n)
     x = x.reshape((len(x), 1))
 
@@ -172,4 +172,6 @@ def sim(scenario="FCR", F_percentage=0, max_n=1500, step_n=100, start_n=100, rep
 
 
 if __name__ == "__main__":
-    sim(scenario="FCR", F_percentage=0.0, max_n=1000, step_n=100, start_n=100, reps=3)
+    # import logging
+    # logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
+    sim(scenario="FCM", F_percentage=0.75, max_n=1500, step_n=100, start_n=100, reps=50)
