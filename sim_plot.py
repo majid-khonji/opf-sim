@@ -44,7 +44,7 @@ def quick_plot(name, dump_dir="results/dump/", fig_dir="results/"):
     plt.legend()
     # plt.ylim([0,1])
     plt.xlabel("Number of customers")
-    plt.ylabel("Maximized Valuation")
+    plt.ylabel("Objective value")
     plt.subplots_adjust(left=0.125, bottom=0.15, right=.9, top=.85)
     plt.savefig(fig_dir + '/quick.pdf')
 
@@ -113,7 +113,7 @@ def plot_subfig_obj(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
                 yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="IDA",
+    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="MDA",
             linewidth=2,
             linestyle='-.')
 
@@ -283,7 +283,7 @@ def plot_subfig_loss(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1],
                 yerr=mean_yerr_greedy_loss[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1], color='blue', marker='.', label="IDA",
+    ax.plot(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1], color='blue', marker='.', label="MDA",
             linewidth=2,
             linestyle='-.')
 
@@ -334,7 +334,7 @@ def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
 
     fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
 
-    fig.text(0.00, 0.5, 'Maximized utility', ha='center', va='center', rotation='vertical', fontsize=14)
+    fig.text(0.00, 0.5, 'Objective value', ha='center', va='center', rotation='vertical', fontsize=14)
 
     plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
     plt.savefig(fig_dir + "obj_adapt.pdf", bbox_inches='tight')
@@ -356,7 +356,7 @@ def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt(s)"):
     FCM_name = ["adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100",
                 "adapt__FCM_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=100",
                 "adapt__FCM_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=100",
-                "adapt__FCM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=10"] ###### FIX THIS GUY ####
+                "adapt__FCM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=100"] ###### FIX THIS GUY ####
     FUR_name = ["adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
                 "adapt__FUR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
                 "adapt__FUR_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
@@ -474,7 +474,7 @@ def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
 
     fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
 
-    fig.text(0.00, 0.5, 'Average Loss %', ha='center', va='center', rotation='vertical', fontsize=14)
+    fig.text(0.00, 0.5, r'Loss % ($\delta \times 100$)', ha='center', va='center', rotation='vertical', fontsize=14)
 
     plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
     plt.savefig(fig_dir + "loss_adapt.pdf", bbox_inches='tight')
@@ -544,8 +544,8 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
 
 if __name__ == "__main__":
     # quick_plot(name="FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
-    # plot_all_obj()
-    # plot_all_ar(ar_type="opt")
+    plot_all_obj()
+    plot_all_ar(ar_type="opt")
     # plot_all_time()
     plot_all_loss()
     # plot_time()
