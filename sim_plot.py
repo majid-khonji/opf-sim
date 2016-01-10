@@ -113,7 +113,7 @@ def plot_subfig_obj(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
                 yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="MDA",
+    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="Alg.3",
             linewidth=2,
             linestyle='-.')
 
@@ -124,7 +124,7 @@ def plot_subfig_obj(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
                 yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
-    ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label=r"OPT(s)",
+    ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label=r"OPT$_{\rm S}$",
             linewidth=2, linestyle='--')
     ax.grid(True)
     # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
@@ -154,28 +154,8 @@ def plot_subfig_ar(name, ax, dump_dir, ar_type='opt(s)'):
         f = np.load(dump_dir + '/' + name[0] + ".npz")
         greedy_obj = f["greedy_obj"]
         OPT_s_obj = f["OPT_s_obj"]
-
-
-
-
-
-        # for a,b in zip(np.nditer(greedy_obj),np.nditer(OPT_s_obj)):
-        #     print a,b
         greedy_ar = greedy_obj/OPT_s_obj
-        # print greedy_ar.shape
-        # greedy_ar = greedy_obj[np.where(greedy_obj <= OPT_s_obj)]/OPT_s_obj[np.where(greedy_obj <= OPT_s_obj)]
-        # print greedy_ar.shape
-        # OPT_s_obj = f["OPT_obj"]
-        # print np.where(OPT_s_obj<greedy_obj)
         mean_yerr_greedy_00 =np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_ar)), 1)
-
-        # for r in enumerate(OPT_s_obj):
-        #     print 'opt: ', OPT_s_obj[r[0]]
-        #     print 'grd: ', greedy_obj[r[0]]
-        #     print 'ar: ', greedy_ar[r[0]]
-        #     print '-----'
-
-
 
         f = np.load(dump_dir + '/' + name[1] + ".npz")
         greedy_obj = f["greedy_obj"]
@@ -195,26 +175,37 @@ def plot_subfig_ar(name, ax, dump_dir, ar_type='opt(s)'):
         greedy_ar = greedy_obj/OPT_s_obj
         mean_yerr_greedy_75 =np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_ar)), 1)
 
-    ax.errorbar(mean_yerr_greedy_00[:, 0], mean_yerr_greedy_00[:, 1],
-                yerr=mean_yerr_greedy_00[:, 2], linestyle='None', color='blue')
+    # ax.errorbar(mean_yerr_greedy_00[:, 0], mean_yerr_greedy_00[:, 1],
+    #             yerr=mean_yerr_greedy_00[:, 2], linestyle='None', color='blue')
     ax.plot(mean_yerr_greedy_00[:, 0], mean_yerr_greedy_00[:, 1], color='blue', marker='.', label="0%",
             linewidth=2,
-            linestyle='-.')
+            linestyle='-')
 
-    ax.errorbar(mean_yerr_greedy_25[:, 0], mean_yerr_greedy_25[:, 1], yerr=mean_yerr_greedy_25[:, 2], color='red',
-                linestyle='None')
-    ax.plot(mean_yerr_greedy_25[:, 0], mean_yerr_greedy_25[:, 1], color='red', label=r'25%', linewidth=2)
+    # ax.errorbar(mean_yerr_greedy_25[:, 0], mean_yerr_greedy_25[:, 1], yerr=mean_yerr_greedy_25[:, 2], color='red',
+    #             linestyle='None')
+    ax.plot(mean_yerr_greedy_25[:, 0], mean_yerr_greedy_25[:, 1], linestyle = '-', color='red', label=r'25%', linewidth=2)
 
 
-    ax.errorbar(mean_yerr_greedy_50[:, 0], mean_yerr_greedy_50[:, 1],
-                yerr=mean_yerr_greedy_50[:, 2], linestyle='None', color='green')
+    # ax.errorbar(mean_yerr_greedy_50[:, 0], mean_yerr_greedy_50[:, 1],
+    #             yerr=mean_yerr_greedy_50[:, 2], linestyle='None', color='green')
     ax.plot(mean_yerr_greedy_50[:, 0], mean_yerr_greedy_50[:, 1], color='green', label=r"50%",
-            linewidth=2, linestyle='--')
+            linewidth=2, linestyle='-')
 
-    ax.errorbar(mean_yerr_greedy_75[:, 0], mean_yerr_greedy_75[:, 1],
-                yerr=mean_yerr_greedy_75[:, 2], linestyle='None', color='black')
-    ax.plot(mean_yerr_greedy_75[:, 0], mean_yerr_greedy_75[:, 1], color='black', label=r"75%",
-            linewidth=2, linestyle='--')
+    # ax.errorbar(mean_yerr_greedy_75[:, 0], mean_yerr_greedy_75[:, 1],
+    #             yerr=mean_yerr_greedy_75[:, 2], linestyle='None', color='black')
+    ax.plot(mean_yerr_greedy_75[:, 0], mean_yerr_greedy_75[:, 1], color='black', label=r"75% (% elastic customers)  ",
+            linewidth=2, linestyle='-')
+
+
+    ar = map(lambda n:1./(np.floor(1/np.cos(72/180. *np.pi) * 1/np.cos(72/180./2. *np.pi) )+1) ,mean_yerr_greedy_75[:, 0])
+    # ar = map(lambda n:1./(np.floor(( 1/np.cos(72/180. *np.pi)) * 1/np.cos(72/180./2. *np.pi) + 1)*(2*np.log2(n) + 1)) ,mean_yerr_greedy_75[:, 0])
+    # ar = map(lambda n:1./(2*np.log2(n) + 1)  ,mean_yerr_greedy_75[:, 0])
+    ax.plot(mean_yerr_greedy_75[:, 0], ar, color='black',
+            linewidth=2, linestyle='-.')
+    ax.text(568, .27, r'Theoretical', fontsize=13)
+
+    print ar
+
     ax.grid(True)
     ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
 
@@ -233,39 +224,38 @@ def plot_subfig_time(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1],
                 yerr=mean_yerr_greedy_time[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1], color='blue', marker='.', label="IDA",
+    ax.plot(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1], color='blue', marker='.', label="Alg.2",
             linewidth=2,
             linestyle='-.')
 
-    c = ax.twinx()
-    # c.set_ylabel("Capacity", color='green', fontsize=14)
+    # c = ax.twinx()
 
-    c.errorbar(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], yerr=mean_yerr_OPT_time[:, 2], color='red',
+    ax.errorbar(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], yerr=mean_yerr_OPT_time[:, 2], color='red',
                 linestyle='None')
-    c.plot(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], color='red', label=r'OPT', linewidth=2)
+    ax.plot(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], color='red', label=r'OPT', linewidth=2)
 
 
     # c.errorbar(mean_yerr_OPT_s_time[:, 0], mean_yerr_OPT_s_time[:, 1],
     #             yerr=mean_yerr_OPT_s_time[:, 2], linestyle='None', color='green')
     # c.plot(mean_yerr_OPT_s_time[:, 0], mean_yerr_OPT_s_time[:, 1], color='green', label=r"OPT(s)",
     #         linewidth=2, linestyle='--')
-    ax.set_ylim([0,.900])
+    # ax.set_ylim([0,.900])
     ax.grid(True)
-    c.grid(True)
+    # c.grid(True)
     # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
     # format_exponent(ax, 'y')
     # format_exponent(c, 'y', y_horz_alignment='right')
 
-    for tick in c.get_yticklabels():
-        tick.set_color('red')
-    for tick in ax.get_yticklabels():
-        tick.set_color('blue')
+    # for tick in c.get_yticklabels():
+    #     tick.set_color('red')
+    # for tick in ax.get_yticklabels():
+    #     tick.set_color('blue')
 
     for tick in ax.get_xticklabels():
         tick.set_rotation(30)
     ax.set_xlim([100, 2050])
 
-    return c
+    # return c
 def plot_subfig_loss(name, ax, dump_dir):
 
     f = np.load(dump_dir + '/' + name + ".npz")
@@ -283,15 +273,15 @@ def plot_subfig_loss(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1],
                 yerr=mean_yerr_greedy_loss[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1], color='blue', marker='.', label="MDA",
+    ax.plot(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1], color='blue', marker='.', label="Alg.3",
             linewidth=2,
-            linestyle='-.')
+            linestyle='-')
 
 
     ax.errorbar(mean_yerr_OPT_s_loss[:, 0], mean_yerr_OPT_s_loss[:, 1],
                 yerr=mean_yerr_OPT_s_loss[:, 2], linestyle='None', color='green')
-    ax.plot(mean_yerr_OPT_s_loss[:, 0], mean_yerr_OPT_s_loss[:, 1], color='green', label=r"OPT(s)",
-            linewidth=2, linestyle='--')
+    ax.plot(mean_yerr_OPT_s_loss[:, 0], mean_yerr_OPT_s_loss[:, 1], color='green', label=r"OPT$_{\rm S}$",
+            linewidth=2, linestyle='-')
     ax.grid(True)
     # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
     # format_exponent(ax, 'y')
@@ -385,10 +375,10 @@ def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt(s)"):
     fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
 
     fig.text(0.00, 0.5, 'Approximation ratio', ha='center', va='center', rotation='vertical', fontsize=14)
-    fcr.set_ylim([0, 1.2])
-    fcm.set_ylim([0, 1.2])
-    fur.set_ylim([0, 1.2])
-    fum.set_ylim([0, 1.2])
+    fcr.set_ylim([0, 1])
+    fcm.set_ylim([0, 1])
+    fur.set_ylim([0, 1])
+    fum.set_ylim([0, 1])
 
     plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
     plt.savefig(fig_dir +"ar_"+ar_type+"_adapt.pdf", bbox_inches='tight')
@@ -412,22 +402,24 @@ def plot_all_time(dump_dir="results/dump/", fig_dir="results/"):
     c=plot_subfig_time(name=FCR_name, ax=fcr, dump_dir=dump_dir)
     fcr.set_title('CR')
     fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
-    c.legend(bbox_to_anchor=(2.3, 1.15, 0, 0), loc=4, ncol=1, borderaxespad=0., fontsize=12)
-    fcr.set_ylim([0,1])
+    # c.legend(bbox_to_anchor=(.75, 1.15, 0, 0), loc=4, ncol=1, borderaxespad=0., fontsize=12)
+    fcr.set_ylim([0,120])
     # c.set_ylim([0,80000])
 
-    plot_subfig_time(name=FCM_name, ax=fcm, dump_dir=dump_dir)
+    c= plot_subfig_time(name=FCM_name, ax=fcm, dump_dir=dump_dir)
     fcm.set_title('CM')
-    fcm.set_ylim([0,1])
+    # fcm.set_ylim([0,1])
+    fcm.set_ylim([0,8.1])
 
     c = plot_subfig_time(name=FUR_name, ax=fur, dump_dir=dump_dir)
     fur.set_title('UR')
-    fur.set_ylim([0,1])
-    # c.set_ylim([0,4000])
+    # fur.set_ylim([0,1])
+    fur.set_ylim([0,5])
 
-    plot_subfig_time(name=FUM_name, ax=fum, dump_dir=dump_dir)
+    c = plot_subfig_time(name=FUM_name, ax=fum, dump_dir=dump_dir)
     fum.set_title('UM')
-    fum.set_ylim([0,1])
+    # fum.set_ylim([0,1])
+    fum.set_ylim([0,10])
 
     fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
 
@@ -474,7 +466,7 @@ def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
 
     fig.text(0.5, 0.01, 'Number of customers', ha='center', va='center', fontsize=14)
 
-    fig.text(0.00, 0.5, r'Loss % ($\delta \times 100$)', ha='center', va='center', rotation='vertical', fontsize=14)
+    fig.text(0.00, 0.5, r'$\delta \times 100$', ha='center', va='center', rotation='vertical', fontsize=14)
 
     plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
     plt.savefig(fig_dir + "loss_adapt.pdf", bbox_inches='tight')
@@ -514,7 +506,7 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
     g = plt.subplot(121)
     g.errorbar(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1],
                yerr=mean_yerr_gr_time[:, 2], linestyle='None', color='blue')
-    g.plot(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1], color='blue', label="IDA", linewidth=2,
+    g.plot(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1], color='blue', label="Alg.2", linewidth=2,
            linestyle='-', marker='.')
     plt.xticks(rotation=35)
     plt.legend(loc=2)
@@ -544,8 +536,8 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
 
 if __name__ == "__main__":
     # quick_plot(name="FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=20")
-    plot_all_obj()
+    # plot_all_obj()
     plot_all_ar(ar_type="opt")
-    # plot_all_time()
-    plot_all_loss()
+    plot_all_time()
+    # plot_all_loss()
     # plot_time()
