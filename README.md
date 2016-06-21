@@ -1,5 +1,5 @@
 # maxOPF simulation
-There are three main files:
+Main files:
 
 * instance.py: contain classes that define an instance and solution. It also contains functions that generate random instances.
 

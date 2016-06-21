@@ -9,7 +9,7 @@ import s_maxOPF_algs as ss
 import OPF_algs as oo
 
 
-def sim(scenario="FCR", F_percentage=0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
+def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
         dump_dir="results/dump/", is_adaptive_loss = True):
     name = "%s_F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
         scenario, F_percentage, max_n, step_n, start_n, reps)
@@ -175,3 +175,13 @@ if __name__ == "__main__":
     # import logging
     # logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     sim(scenario="FCM", F_percentage=0.75, max_n=1500, step_n=100, start_n=100, reps=50)
+
+
+
+
+
+    
+    
+
+   
+    

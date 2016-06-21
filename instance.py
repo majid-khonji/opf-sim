@@ -5,6 +5,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
+import csv
 # import util as u
 
 ############## IMPORTANT ###########
@@ -168,7 +169,8 @@ def single_link_instance(n=10, capacity=.1, z=(.01, .01), loss_ratio=.08, Rand=T
     ins.topology = T
     return ins
 
-# method = ['method1'|'method2'|'fixed']
+# method = ['method1'|'method2'|'fixed'] (experimental)
+# loss C_ or L flags for T are used later.
 def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_ratio=.08,
         method='fixed'):
     T = nx.Graph()
@@ -308,6 +310,43 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
 
     return T
 
+# returns T  of type nx.Graph()
+# loss C_ or L flags for T are not set
+def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base = 5000000, V_base = 4160, visualize=False):
+    T = nx.Graph()
+    T.graph["S_base"] = S_base
+    T.graph["V_base"] = V_base
+    with open(filename) as csvfile:
+        reader = csv.DictReader(filter(lambda row: row[0]!='#',csvfile));
+        for row in reader:
+            #print row['Node A'], "|" , row['Node B'], "|", row['r (p.u.)'], '|' , row['x (p.u.)'], '|', row['C (p.u.)']
+            A = int(row['Node A'])
+            B = int(row['Node B'])
+            T.add_edge(A,B)
+            T[A][B]['z'] = (float(row['r (p.u.)']), float(row['x (p.u.)']))
+            T[A][B]['C'] = float(row['C (p.u.)'])
+
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers whos demands pass through edge e
+    nx.set_edge_attributes(T, 'L', {k: 0 for k in T.edges()})  # loss upper bound
+    nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
+    leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
+    T.graph['leaf_nodes'] = leaf_nodes
+    T.graph['leaf_edges'] = [(i, nx.predecessor(T, i, 0)[0]) for i in leaf_nodes]
+    max_depth = 0
+    for i in T.nodes()[1:]:
+        T.node[i]['depth'] = len(nx.shortest_path(T, 0, i)) - 1
+        if T.node[i]['depth'] > max_depth: max_depth = T.node[i]['depth']
+    logging.info('max depth  = %d' % max_depth)
+    if visualize:
+        pos=nx.graphviz_layout(T,prog='dot')
+        nx.draw(T, pos)
+        node_labels = {k:k for k in T.nodes()}
+        nx.draw_networkx_labels(T, pos, labels = node_labels)
+        edge_labels = nx.get_edge_attributes(T,'z')
+        nx.draw_networkx_edge_labels(T, pos, labels = edge_labels)
+        plt.show()
+
+    return T
 
 def rnd_instance_from_graph(T, n=3, v_0=1, v_max=1.21, v_min=0.81000,
                       load_theta_range=(-0.628, 0.628), max_load = .1,
