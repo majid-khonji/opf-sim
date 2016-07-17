@@ -1,5 +1,5 @@
 # encoding=utf8
-__author__ = 'mkhonji'
+__author__ = 'Majid Khonji'
 
 import numpy as np
 import time, pickle
@@ -8,14 +8,14 @@ import instance as ii
 import s_maxOPF_algs as ss
 import OPF_algs as oo
 
-
+# topology = [38 | 123] (IEEE topology. The code can be cleaned in future, only csv file should be given)
 def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
-        dump_dir="results/dump/", is_adaptive_loss = True):
-    name = "%s_F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
-        scenario, F_percentage, max_n, step_n, start_n, reps)
+        dump_dir="results/dump/", is_adaptive_loss = True, topology=123):
+    name = "%s__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
+        scenario, topology, F_percentage, max_n, step_n, start_n, reps)
     if is_adaptive_loss:
-        name = "adapt__%s_F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
-            scenario, F_percentage, max_n, step_n, start_n, reps)
+        name = "adapt__%s__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
+            scenario, topology, F_percentage, max_n, step_n, start_n, reps)
     ### set up variables
     cons = ''
     capacity_flag = 'C_'
@@ -53,7 +53,13 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
             print name
             print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
             print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-            T = ii.network_38node(loss_ratio=loss_ratio)
+            T = None
+            if topology == 38:
+                # T = ii.network_38node(loss_ratio=loss_ratio)
+                pass
+            elif topology == 123:
+                T = ii.network_csv_load(filename='test-feeders/123-node-line-data.csv',loss_ratio=loss_ratio)
+
             is_OPT_smaller = True
 
             suboptimal1_count = 0

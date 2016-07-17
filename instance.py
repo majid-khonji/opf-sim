@@ -1,5 +1,5 @@
 #! /usr/bin/python
-__author__ = 'Majid'
+__author__ = 'Majid Khonji'
 import networkx as nx
 import random
 import numpy as np
@@ -241,7 +241,7 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
     logging.info('max depth  = %d' % max_depth)
 
 
-    ####### method 1: pessimistic
+    ####### method 1: pessimistic (experimental)
     if method == "method1":
         max_loss_per = 0
         for e in T.edges():
@@ -260,7 +260,7 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
             print 'loss  = %.6f\t %4.2f%%'%( T[e[0]][e[1]]['L'], per)
         #print 'max %% = %.2f'%max_loss_per
     elif method == "method2":
-        ####### method 2: ######
+        ####### method 2: ###### (experimental)
         print "##### method 2 #####"
         for e in T.edges():
             T_ = T.copy()
@@ -285,6 +285,7 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
             #print "loss of %-8s  = %.6f"%(str(e), loss1)
             T[e[0]][e[1]]['L'] = loss2
             print "loss of %-8s  = %.6f\t %4.2f%%"%(str(e), loss2, loss2/C)
+    ######### default method #######
     elif method == "fixed":
         for e in T.edges():
             C = T[e[0]][e[1]]['C']
@@ -312,8 +313,9 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
 
 # returns T  of type nx.Graph()
 # loss C_ or L flags for T are not set
-def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base = 5000000, V_base = 4160, visualize=False):
-    T = nx.Graph()
+def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base = 5000000, V_base = 4160, visualize=False, loss_ratio=0.08):
+    # T = nx.Graph()
+    T = nx.DiGraph()
     T.graph["S_base"] = S_base
     T.graph["V_base"] = V_base
     with open(filename) as csvfile:
@@ -326,17 +328,29 @@ def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base = 50
             T[A][B]['z'] = (float(row['r (p.u.)']), float(row['x (p.u.)']))
             T[A][B]['C'] = float(row['C (p.u.)'])
 
-    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers whos demands pass through edge e
+    # print T.edges()
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
     nx.set_edge_attributes(T, 'L', {k: 0 for k in T.edges()})  # loss upper bound
     nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
     leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
     T.graph['leaf_nodes'] = leaf_nodes
-    T.graph['leaf_edges'] = [(i, nx.predecessor(T, i, 0)[0]) for i in leaf_nodes]
+    T.graph['leaf_edges'] = [(i, nx.predecessor(T, 0, i)[0]) for i in leaf_nodes]
     max_depth = 0
     for i in T.nodes()[1:]:
         T.node[i]['depth'] = len(nx.shortest_path(T, 0, i)) - 1
         if T.node[i]['depth'] > max_depth: max_depth = T.node[i]['depth']
     logging.info('max depth  = %d' % max_depth)
+
+
+    # setting loss to fixed
+    for e in T.edges():
+        C = T[e[0]][e[1]]['C']
+        z = T[e[0]][e[1]]['z']
+        T[e[0]][e[1]]['L'] = C*loss_ratio
+        T[e[0]][e[1]]['C_'] = C*(1-loss_ratio)
+        logging.info("=== edge %s ===" % str(e))
+        logging.info('C     = %.4f , |z| = %.6f' % (C, np.sqrt(z[0] ** 2 + z[1] ** 2)))
+        logging.info('loss  = %.6f\t %4.2f%%' % (T[e[0]][e[1]]['L'], T[e[0]][e[1]]['L'] / C * 100))
     if visualize:
         pos=nx.graphviz_layout(T,prog='dot')
         nx.draw(T, pos)

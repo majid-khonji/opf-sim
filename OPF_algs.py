@@ -50,9 +50,9 @@ def max_OPF_OPT(ins, cons=''):
         m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
         # m.addConstr(dummy_q[e[1]] >= 0, "dummy_Q_%d"%e[1])
         rhs_P = l[e] * z[0] + gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [P[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_p[e[1]]
+            [P[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_p[e[1]]
         rhs_Q = l[e] * z[1] + gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [Q[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_q[e[1]]
+            [Q[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_q[e[1]]
         m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
         m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
 
@@ -151,9 +151,9 @@ def min_loss_OPF(ins, x, cons=''):
 
         # index_set = set(T.node[e[1]]['N']).intersection(set(idx))
         rhs_P = l[e] * z[0] + gbp.quicksum([ins.loads_P[k] * x[k] for k in T.node[e[1]]['N']]) + gbp.quicksum(
-            [P[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_p[e[1]]
+            [P[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_p[e[1]]
         rhs_Q = l[e] * z[1] + gbp.quicksum([ins.loads_Q[k] * x[k] for k in T.node[e[1]]['N']]) + gbp.quicksum(
-            [Q[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h]) + dummy_q[e[1]]
+            [Q[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_q[e[1]]
         m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
         m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
 
@@ -173,10 +173,14 @@ def min_loss_OPF(ins, x, cons=''):
     sol.m = m
     sol.running_time = time.time() - t1
 
-    if (u.gurobi_handle_errors(m) == False):
+    if (m.status == 3):
+        # logging.warning("Infeasible!")
         sol.obj = -np.inf
         return sol
-    sol.obj = obj.getValue()
+    # if (u.gurobi_handle_errors(m) == False):
+    #     sol.obj = -np.inf
+    #     return sol
+    #sol.obj = obj.getValue()
 
     if logging.getLogger().getEffectiveLevel() == logging.INFO:
         for e in T.edges():
@@ -261,8 +265,8 @@ def max_loss(topology, e=(0, 1), v_0=1, v_min=.82, cons=''):
 
         m.addQConstr(l[e] * v[e[0]], gbp.GRB.GREATER_EQUAL, P[e] * P[e], "l_%s" % str(e))  # l= |P|^2/ v_i
 
-        rhs_P = l[e] * z[0] + gbp.quicksum([P[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h])
-        rhs_Q = l[e] * z[1] + gbp.quicksum([Q[(e[1], h)] for h in T.edge[e[1]].keys() if e[1] < h])
+        rhs_P = l[e] * z[0] + gbp.quicksum([P[(e[1], h)] for h in T.edge[e[1]].keys()])
+        rhs_Q = l[e] * z[1] + gbp.quicksum([Q[(e[1], h)] for h in T.edge[e[1]].keys()])
         if e[1] in children_nodes:
             m.addConstr(p[e[1]] >= 0, "q_%d" % e[1])
             # m.addConstr(q[e[1]] >= 0, "p_%d"%e[1])
