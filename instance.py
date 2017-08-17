@@ -171,9 +171,9 @@ def single_link_instance(n=10, capacity=.1, z=(.01, .01), loss_ratio=.08, Rand=T
 
 # method = ['method1'|'method2'|'fixed'] (experimental)
 # loss C_ or L flags for T are used later.
-def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_ratio=.08,
+def network_38node(file_name='tmp-data/38_node_test.gpickle', visualize=False, loss_ratio=.08,
         method='fixed'):
-    T = nx.Graph()
+    T = nx.DiGraph()
     T.graph["S_base"] = 1000000
     T.graph["V_base"] = 12660
     T.add_edge(0,2); T[0][2]['z'] = (.000574, .000293); T[0][2]['C'] = 4.6
@@ -233,7 +233,7 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
     nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
     leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
     T.graph['leaf_nodes'] = leaf_nodes
-    T.graph['leaf_edges'] = [(i, nx.predecessor(T, i, 0)[0]) for i in leaf_nodes]
+    T.graph['leaf_edges'] = [(i, nx.predecessor(T, 0, i)[0]) for i in leaf_nodes]
     max_depth = 0
     for i in T.nodes()[1:]:
         T.node[i]['depth'] = len(nx.shortest_path(T, 0, i)) - 1
@@ -313,7 +313,7 @@ def network_38node(file_name='data/38_node_test.gpickle', visualize=False, loss_
 
 # returns T  of type nx.Graph()
 # loss C_ or L flags for T are not set
-def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base = 5000000, V_base = 4160, visualize=False, loss_ratio=0.08):
+def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base = 5000000, V_base = 4160, visualize=False, loss_ratio=0.0):
     # T = nx.Graph()
     T = nx.DiGraph()
     T.graph["S_base"] = S_base
@@ -369,6 +369,7 @@ def rnd_instance_from_graph(T, n=3, v_0=1, v_max=1.21, v_min=0.81000,
     for k in T.nodes():
         T.node[k]['N'] = []  # customers on node i
         # T.node[k]['v'] = 0   # voltage
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
 
     ins = maxOPF_instance()
     T.node[0]['v'] = ins.v_0
@@ -402,6 +403,7 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(-0.62831
     for k in T.nodes():
         T.node[k]['N'] = []  # customers on node i
         # T.node[k]['v'] = 0   # voltage
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
 
     ins = maxOPF_instance()
     T.node[0]['v'] = ins.v_0
@@ -447,6 +449,8 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(-0.62831
     ins.loads_S = loads_S / T.graph['S_base']
     ins.loads_angles = loads_angles
     ins.loads_utilities = utilities
+    ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
+    ins.loads_Q = np.array(map(lambda x, t: x * np.math.sin(t), ins.loads_S, ins.loads_angles))
 
     # print "angles ", loads_angles
     # print "util  ", utilities
@@ -458,8 +462,8 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(-0.62831
 def distribute_customers(ins, capacity_flag='C_'):
     T = ins.topology
     n = ins.n
-    ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
-    ins.loads_Q = np.array(map(lambda x, t: x * np.math.sin(t), ins.loads_S, ins.loads_angles))
+    #ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
+    #ins.loads_Q = np.array(map(lambda x, t: x * np.math.sin(t), ins.loads_S, ins.loads_angles))
 
     for k in range(n):
         attached_node = np.random.choice(T.nodes()[1:])

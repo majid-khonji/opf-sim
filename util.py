@@ -14,11 +14,10 @@ def gurobi_setting(m):
     m.setParam("OutputFlag", 0)
     m.setParam("TimeLimit", 200)
     m.setParam("MIPGapAbs", 0.000001)
-    m.setParam("IntFeasTol", 0.000001)
+    m.setParam("IntFeasTol",0.0001)
     m.setParam("DualReductions", 0)
     # m.setParam("MIPGapAbs", 0)
     # m.setParam("MIPGap", 0)
-    # m.setParam("IntFeasTol", 1e-09)
     # m.setParam("SolutionLimit", 1)
     m.setParam("NumericFocus",0) #0 automatic, 1-3 means how hard gurobi check numeric accuracty
 

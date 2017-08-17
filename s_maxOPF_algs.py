@@ -21,7 +21,7 @@ def greedy_card(ins, cons='', fixed_demands_P=None, fixed_demands_Q=None, capaci
     sol = a.maxOPF_sol()
     T = ins.topology
     idx = None
-    if ins.I== None:
+    if ins.I is None:
         idx = np.arange(ins.n)
     else:
         idx = ins.I
@@ -78,7 +78,7 @@ def greedy_card(ins, cons='', fixed_demands_P=None, fixed_demands_Q=None, capaci
 
     sol.running_time = time.time() - t1
     return sol
-def check_feasibility(ins, x, capacity_flag='C_'):
+def check_feasibility(ins, x, capacity_flag='C_', debug = True):
     T = ins.topology
     out = True
     for e in T.edges():
@@ -86,9 +86,10 @@ def check_feasibility(ins, x, capacity_flag='C_'):
         pure_demand_Q = np.sum([ins.loads_Q[k] * x[k] for k in T[e[0]][e[1]]['K']])
         S = np.sqrt(pure_demand_P**2 + pure_demand_Q**2)
         C = T[e[0]][e[1]][capacity_flag]
-        if S > C:
-            print ' AT edge:', e,  'S = %.3f > C = %.3f'%(S,C)
-            out=  False
+        if debug:
+            if S > C:
+                print ' AT edge:', e,  'S = %.3f > C = %.3f'%(S,C)
+                out=  False
     return out
 
 # cons = ["C" | "V" | ""] determines which constraint to consider
@@ -242,7 +243,7 @@ def adaptive_greedy(ins,  cons='', loss_step = .005):
     sol = None
     if ins.F.size == 0: sol = greedy(ins,cons,capacity_flag='C_')
     else: sol = mixed_greedy(ins2,cons,capacity_flag='C_')
-    _sol_ = o.min_loss_OPF(ins2,sol.x)
+    _sol_ = o.min_loss_OPF(ins2,sol.x, cons=cons)
     attemps = 0
     while _sol_.obj == -np.infty:
         attemps+=1
@@ -250,9 +251,9 @@ def adaptive_greedy(ins,  cons='', loss_step = .005):
         for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']*(1-loss_ratio)
         if ins.F.size == 0: sol = greedy(ins,cons,capacity_flag='C_')
         else: sol = mixed_greedy(ins2,cons,capacity_flag='C_')
-        _sol_ = o.min_loss_OPF(ins2,sol.x)
-        if loss_ratio > .5:
-            print '   greedy loss increased more than 50%. something could be wrong!!'
+        _sol_ = o.min_loss_OPF(ins2,sol.x, cons= cons)
+        if loss_ratio > .20:
+            print '   greedy loss increased more than 20%. something could be wrong!!'
             break
         # print '  greedy_loss_ratio = %.4f'%loss_ratio
         # print attemps,
@@ -263,31 +264,34 @@ def adaptive_greedy(ins,  cons='', loss_step = .005):
 
 # estimate loss through small steps
 def adaptive_OPT(ins,  cons='', loss_step = .005):
+
     t1 = time.time()
-    ins2 = copy.copy(ins)
-    T = ins2.topology
+#    ins2 = copy.copy(ins)
+    #T = ins2.topology
+    T = ins.topology
     loss_ratio = 0
-    for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']
-    sol = OPT(ins2,cons,capacity_flag='C_')
-    _sol_ = o.min_loss_OPF(ins2,sol.x)
+    for e in T.edges():
+         T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']
+         #print e, ' C_ = ', T[e[0]][e[1]]['C_'] , ' | C =', T[e[0]][e[1]]['C'] 
+    sol = OPT(ins,cons,capacity_flag='C_')
+    _sol_ = o.min_loss_OPF(ins,sol.x, cons = cons)
     attemps = 0
-    while _sol_.obj == -np.infty:
+    while _sol_.obj == -np.infty: #or (check_feasibility(ins,sol.x, capacity_flag='C_', debug=True)==False) :
+        # print sol.obj
         attemps+=1
         loss_ratio += loss_step
         for e in T.edges(): T[e[0]][e[1]]['C_'] = T[e[0]][e[1]]['C']*(1-loss_ratio)
-        sol = OPT(ins2,cons,capacity_flag='C_')
-        _sol_ = o.min_loss_OPF(ins2,sol.x)
+        sol = OPT(ins,cons,capacity_flag='C_')
+        _sol_ = o.min_loss_OPF(ins,sol.x, cons=cons)
+        # _sol_ = o.min_loss_OPF(ins,sol.x)
         # print '  OPT_s_loss_ratio = %.4f'%loss_ratio
         # print attemps,
-        if loss_ratio > .5:
-            print '   OPT_s loss increased more than 50%. something could be wrong!!'
+        if loss_ratio > .20:
+            print '   OPT_s loss increased more than 20%. something could be wrong!!'
             break
     sol.loss_ratio = loss_ratio
     sol.running_time = time.time() - t1
     return sol
-
-
-
 
 # cons = ["C" | "V" | ""] determines which constraint to consider
 # capacity_flag = ['C_'|'C'] tell which edge attribute in ins.topology corresponds to capacity
@@ -345,7 +349,7 @@ def OPT_slow(ins, cons='', capacity_flag='C_'):
 # more efficient formulation
 # cons = ["C" | "V" | ""] determines which constraint to consider
 # capacity_flag = ['C_'|'C'] tell which edge attribute in ins.topology corresponds to capacity
-def OPT_no_dummy_var(ins, cons='', capacity_flag='C_', debug=False):
+def OPT(ins, cons='', capacity_flag='C_', debug=False, tolerance = 0.001):
     t1 = time.time()
     T = ins.topology
     m = gbp.Model("qcp")
@@ -355,10 +359,10 @@ def OPT_no_dummy_var(ins, cons='', capacity_flag='C_', debug=False):
     Q = {e: 0 for e in T.edges()}
     v = {i: 0 for i in T.nodes()}
     v[0] = ins.v_0
-    # dummy_p = {i: 0 for i in T.nodes()}
-    # dummy_q = {i: 0 for i in T.nodes()}
-    # for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
-    # for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
+#    dummy_p = {i: 0 for i in T.nodes()}
+#    dummy_q = {i: 0 for i in T.nodes()}
+#    for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
+#    for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
     for i in ins.I: x[i] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % i)
     for i in ins.F: x[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % i)
     for e in T.edges(): P[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(e))
@@ -371,13 +375,17 @@ def OPT_no_dummy_var(ins, cons='', capacity_flag='C_', debug=False):
     m.setObjective(obj, gbp.GRB.MAXIMIZE)
 
     for e in T.edges():
-        # m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
+        #m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
         rhs_P = gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
             [P[(e[1], h)] for h in T.edge[e[1]].keys()]) #+ dummy_p[e[1]]
         rhs_Q = gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
             [Q[(e[1], h)] for h in T.edge[e[1]].keys()]) #+ dummy_q[e[1]]
-        m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
-        m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
+        #m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
+        m.addQConstr(rhs_P + tolerance >= P[e] , "P_%s=" % str(e))
+        m.addQConstr( P[e] >= rhs_P - tolerance, "P_%s=" % str(e))
+        #m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
+        m.addQConstr(rhs_Q + tolerance >= Q[e] , "Q_%s=" % str(e))
+        m.addQConstr(Q[e] >= rhs_Q - tolerance, "Q_%s=" % str(e))
 
         if cons == 'C' or cons == '':
             m.addQConstr(P[e] * P[e] + Q[e] * Q[e], gbp.GRB.LESS_EQUAL, T[e[0]][e[1]][capacity_flag] ** 2,
@@ -426,10 +434,12 @@ def OPT_no_dummy_var(ins, cons='', capacity_flag='C_', debug=False):
 
     return sol
 
-def OPT(ins, cons='', capacity_flag='C_'):
+def OPT_with_dummy(ins, cons='', capacity_flag='C_'):
     t1 = time.time()
     T = ins.topology
+
     m = gbp.Model("qcp")
+    m.reset()
     u.gurobi_setting(m)
     x = {k: 0 for k in range(ins.n)}
     P = {e: 0 for e in T.edges()}
@@ -496,7 +506,13 @@ def OPT(ins, cons='', capacity_flag='C_'):
 # def handleError(self, record):
 #     raise
 if __name__ == "__main__":
-    import sys
+    import warnings, sys
+
+    def customwarn(message, category, filename, lineno, file=None, line=None):
+        sys.stdout.write(warnings.formatwarning(message, category, filename, lineno))
+
+        warnings.showwarning = customwarn
+        warnings.warn("test warning")
     # logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     # root = logging.getLogger()
     # root.setLevel(logging.INFO)
@@ -510,7 +526,7 @@ if __name__ == "__main__":
     # ins = a.rnd_path_instance(n=100,node_count=10, capacity_range=(30, 50))
     #T = a.network_38node(loss_ratio=.05)
     T = a.network_csv_load()
-    ins = a.sim_instance(T, scenario='FUR', n = 2000,F_percentage=.0)
+    ins = a.sim_instance(T, scenario='FCM', n = 1200,F_percentage=.0)
     # print 'loads S',  ins.loads_S
     # ins = a.rnd_instance_from_graph(T, n=1000)
     # ins = a.sim_instance(T, scenario='FCM', n = 100)
@@ -525,41 +541,57 @@ if __name__ == "__main__":
     print '----- OPT ------'
     import OPF_algs as op
 
-    sol2 = op.max_OPF_OPT(ins, cons='C')
-    print 'OPT, obj value     : ', sol2.obj
-    print "check_feasibility? ", check_feasibility(ins,sol2.x, capacity_flag='C')
-    print 'time: ', sol2.running_time
-    ss = op.min_loss_OPF(ins, sol2.x, cons='C')
+    sol1 = op.max_OPF_OPT(ins, cons='C',debug=False)
+    print 'OPT, obj value     : ', sol1.obj
+    print "check_feasibility? ", check_feasibility(ins,sol1.x, capacity_flag='C')
+    print 'time: ', sol1.running_time
+    ss = op.min_loss_OPF(ins, sol1.x, cons='C')
     print "feasibility (min loss)? ", ss.obj
-   
-   # print 'slow, obj value: ', sol2.obj
-   # print 'time: ', sol2.running_time
 
-    print '----- OPTs ------'
-#    sol2 = OPT_slow(ins, cons='C', capacity_flag='C')
-   # print 'slow, obj value: ', sol2.obj
-   # print 'time: ', sol2.running_time
-    #print sol2.x.values()
-    #print check_feasibility(ins,sol2.x)
-    sol2 = OPT(ins, cons='C', debug = False)
-    print 'OPTs, obj value     : ', sol2.obj
-    # print sol2.idx
+
+    print '----- adaptive OPTs ------'
+    sol2 = adaptive_OPT(ins, cons='C')
+    print 'adaptive, obj value: ', sol2.obj
     print "check_feasibility?", check_feasibility(ins,sol2.x, capacity_flag='C')
     print 'time: ', sol2.running_time
-#
-#    sol2 = adaptive_OPT(ins, cons='C')
-#    print 'adaptive, obj value: ', sol2.obj
-#    print 'time: ', sol2.running_time
-#    print 'loss ratio ', sol2.loss_ratio
-#    import OPF_algs as a
-#    ss = a.min_loss_OPF(ins, sol2.x, cons='C')
-#    print "feasibility? ", ss.obj
-#
-    #print sol2.x.values()
-    #print check_feasibility(ins,sol2.x)
-#    print 'loss = ', sol2.loss_ratio
-    #print 'obj x: ', sol2.x
-    #print 'sol x = %s' % str(map(lambda a: round(a, 2), sol2.x))
+    print 'loss ratio ', sol2.loss_ratio
+    ss = op.min_loss_OPF(ins, sol2.x, cons='C')
+    print "feasibility (min loss)? ", ss.obj
+
+    if sol2.obj > sol1.obj:
+        print "#### OPTs is Larger than OPT!!###"
+    print '=== ratio %.3f ===' % (sol2.obj/sol1.obj)
+
+
+    print '----- OPTs ------'
+    sol3 = OPT(ins, cons='C', capacity_flag='C', debug=False)
+    print 'OPTs, obj value     : ', sol3.obj
+    #print sol3.x.values()
+    # print sol2.idx
+    print "check_feasibility?", check_feasibility(ins,sol3.x, capacity_flag='C')
+    print 'time: ', sol3.running_time
+
+    t1 = time.time()
+    #sol_f = greedy_card(ins, cons='C', capacity_flag='C')
+    sol_f = adaptive_greedy(ins, cons='C')
+    # sol_f = greedy(ins, cons='C')
+    
+    print 'in %f sec'% (time.time() - t1)
+    sol_f.ar = sol_f.obj/sol1.obj
+    print "max value =",  sol_f.obj
+    print "check feasibility? ", check_feasibility(ins,sol_f.x)
+    # print sol_f.x.values()
+    #    print 'max sol idx = %s' % str(sol_f.idx)
+    #    print 'max sol idx = %s' % str(sol_f.idx)
+    #    print '# groups: ', len(sol_f.groups)
+    print 'time: ', sol_f.running_time
+    print 'loss ratio ', sol2.loss_ratio
+    ss = op.min_loss_OPF(ins, sol2.x, cons='C')
+    print "feasibility (min loss)? ", ss.obj
+    if sol_f.obj > sol1.obj:
+        print "#### Greedy is Larger than OPT!!###"
+
+    print '\n=== ratio %.3f ===' % sol_f.ar
 
     #print '----- mixed greedy ------'
     # sol_f = mixed_greedy(ins, cons='C', capacity_flag='C_')
@@ -577,23 +609,7 @@ if __name__ == "__main__":
     #    sol_f.ar = sol_f.obj/sol2.obj
     # print "max value =",  sol_f.obj
 
-    print '----- greedy fast ------'
-    t1 = time.time()
-    #sol_f = greedy_card(ins, cons='C', capacity_flag='C')
-    #sol_f = adaptive_greedy(ins, cons='C')
-    sol_f = greedy(ins, cons='C')
-    
-    print 'in %f sec'% (time.time() - t1)
-    sol_f.ar = sol_f.obj/sol2.obj
-    print "max value =",  sol_f.obj
-    print "check feasibility? ", check_feasibility(ins,sol_f.x)
-    # print sol_f.x.values()
-    #    print 'max sol idx = %s' % str(sol_f.idx)
-    #    print 'max sol idx = %s' % str(sol_f.idx)
-    #    print '# groups: ', len(sol_f.groups)
-    print 'time: ', sol_f.running_time
-
-    print '\n=== ratio %.3f ===' % sol_f.ar
+    print '----- adaptive greedy ------'
 
 
 

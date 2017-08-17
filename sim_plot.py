@@ -98,17 +98,19 @@ def _format_exponent(ax, axis='y', y_horz_alignment='left'):
                 verticalalignment=verticalalignment)
     return ax
 
-
+# modified (takes the max for OPT)
 def plot_subfig_obj(name, ax, dump_dir):
 
     f = np.load(dump_dir + '/' + name + ".npz")
     greedy_obj = f["greedy_obj"]
     OPT_obj = f["OPT_obj"]
     OPT_s_obj = f["OPT_s_obj"]
+    ############ new
+    OPT_obj = np.maximum(OPT_s_obj, OPT_obj)
     x = np.arange(100, 1500 + 1, 100)
     x = x.reshape((len(x), 1))
     mean_yerr_greedy_obj = f['mean_yerr_greedy_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_obj)), 1)
-    mean_yerr_OPT_obj = f['mean_yerr_OPT_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
+    mean_yerr_OPT_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
     mean_yerr_OPT_s_obj = f['mean_yerr_OPT_s_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_obj)), 1)
 
     ax.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
@@ -122,10 +124,10 @@ def plot_subfig_obj(name, ax, dump_dir):
     ax.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label=r'OPT', linewidth=2)
 
 
-    # ax.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
-    #             yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
-    # ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label=r"OPT$_{\rm S}$",
-    #         linewidth=2, linestyle='--')
+    ax.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
+                yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
+    ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label=r"OPT$_{\rm S}$",
+            linewidth=2, linestyle='--')
     ax.grid(True)
     # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
     _format_exponent(ax, 'y')
@@ -207,7 +209,7 @@ def plot_subfig_ar(name, ax, dump_dir, ar_type='opt(s)'):
     # ar = map(lambda n:1./(2*np.log2(n) + 1)  ,mean_yerr_greedy_75[:, 0])
     ax.plot(mean_yerr_greedy_75[:, 0], ar, color='black',
             linewidth=2, linestyle='-.')
-    ax.text(568, .16, r'Theoretical', fontsize=13)
+    ax.text(568, .15, r'Theoretical', fontsize=13)
 
     print ar
 
@@ -303,10 +305,10 @@ def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
     """
     plt.ioff()
     # plt.clf()
-    FCR_name = "adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FCM_name = "adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FUR_name = "adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FUM_name = "adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FCR_name = "sim-123-opts-little-bit-large/adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FCM_name = "sim-123-opts-little-bit-large/adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FUR_name = "sim-123-opts-little-bit-large/adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FUM_name = "sim-123-opts-little-bit-large/adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
     # FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
     # FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
     # FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
@@ -360,7 +362,7 @@ def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt"):
                 "adapt__FUR__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
                 "adapt__FUR__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
                 "adapt__FUR__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
-    FUM_name = ["adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+    FUM_name = ["sim-123-opts-little-bit-large/adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
                 "adapt__FUM__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
                 "adapt__FUM__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
                 "adapt__FUM__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
@@ -466,10 +468,14 @@ def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
     """
     plt.ioff()
     # plt.clf()
-    FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
-    FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+    # FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    # FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+    # FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    # FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+    FCR_name = "adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FCM_name = "adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FUR_name = "adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    FUM_name = "adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
 
 
 
@@ -498,7 +504,7 @@ def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
     fig.text(0.00, 0.5, r'$\delta \times 100$', ha='center', va='center', rotation='vertical', fontsize=14)
 
     plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
-    plt.savefig(fig_dir + "loss_adapt.pdf", bbox_inches='tight')
+    plt.savefig(fig_dir + "loss_123_adapt.pdf", bbox_inches='tight')
 def plot_time(dump_dir="results/dump/", fig_dir="results/"):
     # plt.clf()
     FCR_name = "slow_FCR_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"

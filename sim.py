@@ -8,7 +8,7 @@ import instance as ii
 import s_maxOPF_algs as ss
 import OPF_algs as oo
 
-# topology = [38 | 123] (IEEE topology. The code can be cleaned in future, only csv file should be given)
+# topology = [38 | 123] (IEEE topology. The code can be cleaned up in future, only csv file should be given)
 def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
         dump_dir="results/dump/", is_adaptive_loss = True, topology=123):
     name = "%s__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
@@ -35,6 +35,7 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
     adaptive_OPT_s_loss_ratio = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     sub_optimal1_count_per_iteration = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     sub_optimal2_count_per_iteration = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    opt_err_count_per_iteration = np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
     greedy_group_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
@@ -64,12 +65,11 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
 
             suboptimal1_count = 0
             suboptimal2_count = 0
+            opt_err_count = 0
             while is_OPT_smaller:
                 ins = ii.sim_instance(T, scenario=scenario, n=n, F_percentage=F_percentage,capacity_flag=capacity_flag)
                 ### opt
                 sol_opt = oo.max_OPF_OPT(ins, cons)
-                OPT_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
-                OPT_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
                 print "OPT obj   :    %15.2f  |  time: %5.3f" % (
                     sol_opt.obj, sol_opt.running_time)
                 ### opt(s)
@@ -78,10 +78,23 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                     sol_opt_s = ss.adaptive_OPT(ins, cons=cons)
                 else:
                     sol_opt_s = ss.OPT(ins, cons=cons,capacity_flag=capacity_flag)
+
+
+                ####### replace if OPTs is bigger
+                if sol_opt_s.obj > sol_opt.obj:
+                    sol_opt.obj = sol_opt_s.obj
+                    sol_opt.x = sol_opt_s.x
+
+                OPT_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
+                OPT_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
                 OPT_s_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt_s.running_time
                 OPT_s_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt_s.obj
+
                 print "OPTs obj  :    %15.2f  |  time: %5.3f" % (
                     sol_opt_s.obj, sol_opt_s.running_time)
+
+
+
 
                 ### greedy
                 sol = None
@@ -93,13 +106,17 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                     sol = ss.mixed_greedy(ins, capacity_flag=capacity_flag, cons=cons)
                 sol.ar = sol.obj / sol_opt.obj
                 sol.ar2 = sol.obj / sol_opt_s.obj
-                print "Greedy obj:    %15.2f  |  time: %5.3f  |  AR: %5.3f, %4.3f (%d groups)" % (
+                print "Greedy obj:    %15.2f  |  time: %5.3f  |  AR (OPT, OPTs): %5.3f, %4.3f (%d groups)" % (
                     sol.obj, sol.running_time, sol.ar, sol.ar2, len(sol.groups))
 
-                if sol.ar > 1 or sol.ar2 >1:
-                    print '\n-------- repeating (%d,%d): invalid OPT --------'%(suboptimal1_count, suboptimal2_count)
+                if sol.ar > 1 or sol.ar2 >1: # or sol_opt_s.obj/sol_opt.obj > 1  :
                     if sol.ar > 1: suboptimal1_count += 1
                     if sol.ar2 > 1: suboptimal2_count += 1
+                    #if sol_opt_s.obj/sol_opt.obj > 1: opt_err_count += 1
+                    print '\n----- repeating (#Grd>OPT = %d, #Grd>OPTs = %d, #OPTs>OPT = %d): invalid OPT --------'%(suboptimal1_count, suboptimal2_count,opt_err_count)
+                    print name
+                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+
                     continue
                 else: is_OPT_smaller = False
 
@@ -110,6 +127,7 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                 greedy_group_count[(n - start_n + step_n) / step_n - 1, i] = len(sol.groups)
                 sub_optimal1_count_per_iteration[(n - start_n + step_n) / step_n - 1, i] = suboptimal1_count
                 sub_optimal2_count_per_iteration[(n - start_n + step_n) / step_n - 1, i] = suboptimal2_count
+                opt_err_count_per_iteration[(n - start_n + step_n) / step_n - 1, i] = opt_err_count
                 if is_adaptive_loss:
                     adaptive_greedy_loss_ratio[(n - start_n + step_n) / step_n - 1, i] = sol.loss_ratio
                     adaptive_OPT_s_loss_ratio[(n - start_n + step_n) / step_n - 1, i] = sol_opt_s.loss_ratio
@@ -123,6 +141,7 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                      greedy_group_count=greedy_group_count,
                      sub_optimal1_count_per_iteration=sub_optimal1_count_per_iteration,
                      sub_optimal2_count_per_iteration=sub_optimal2_count_per_iteration,
+                     opt_err_count_per_iteration=opt_err_count_per_iteration,
                      adaptive_greedy_loss_ratio=adaptive_greedy_loss_ratio,
                      adaptive_OPT_s_loss_ratio=adaptive_OPT_s_loss_ratio,
                      OPT_obj=OPT_obj,
@@ -154,6 +173,7 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                  greedy_group_count=greedy_group_count,
                  sub_optimal1_count_per_iteration=sub_optimal1_count_per_iteration,
                  sub_optimal2_count_per_iteration=sub_optimal2_count_per_iteration,
+                 opt_err_count_per_iteration=opt_err_count_per_iteration,
                  adaptive_greedy_loss_ratio=adaptive_greedy_loss_ratio,
                  adaptive_OPT_s_loss_ratio=adaptive_OPT_s_loss_ratio,
                  OPT_obj=OPT_obj,

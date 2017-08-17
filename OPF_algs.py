@@ -13,7 +13,7 @@ except ImportError:
     logging.warning("Grubi not available!!")
 
 
-def max_OPF_OPT(ins, cons=''):
+def max_OPF_OPT(ins, cons='', tolerance = 0.0001, debug=False):
     t1 = time.time()
 
     T = ins.topology
@@ -21,8 +21,8 @@ def max_OPF_OPT(ins, cons=''):
     u.gurobi_setting(m)
 
     x = [0] * ins.n
-    dummy_p = {i: 0 for i in T.nodes()}
-    dummy_q = {i: 0 for i in T.nodes()}
+#    dummy_p = {i: 0 for i in T.nodes()}
+#    dummy_q = {i: 0 for i in T.nodes()}
     v = {i: 0 for i in T.nodes()}
     v[0] = ins.v_0
     l = {e: 0 for e in T.edges()}
@@ -30,8 +30,8 @@ def max_OPF_OPT(ins, cons=''):
     Q = {e: 0 for e in T.edges()}
     for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % k)
     for k in ins.F: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
-    for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
-    for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
+#    for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
+#    for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
     for i in T.nodes()[1:]:
         v[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="v_%d" % i)
     for e in T.edges(): l[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="l_%s" % str(e))
@@ -47,14 +47,17 @@ def max_OPF_OPT(ins, cons=''):
 
         m.addQConstr(l[e] * v[e[0]], gbp.GRB.GREATER_EQUAL, (P[e] * P[e] + Q[e] * Q[e]),
                      "l_%s" % str(e))  # l= |S|^2/ v_i
-        m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
+        #m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
         # m.addConstr(dummy_q[e[1]] >= 0, "dummy_Q_%d"%e[1])
         rhs_P = l[e] * z[0] + gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [P[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_p[e[1]]
+            [P[(e[1], h)] for h in T.edge[e[1]].keys() ])# + dummy_p[e[1]]
         rhs_Q = l[e] * z[1] + gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [Q[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_q[e[1]]
-        m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
-        m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
+            [Q[(e[1], h)] for h in T.edge[e[1]].keys() ])# + dummy_q[e[1]]
+        # m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
+        m.addQConstr(rhs_P-tolerance <= P[e], "P_%s=" % str(e))
+        m.addQConstr(rhs_P+tolerance >= P[e], "P_%s=" % str(e))
+        # m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
+        m.addQConstr(rhs_Q-tolerance <=Q[e] <= rhs_Q+tolerance, "Q_%s=" % str(e))
 
         rhs_v = v[e[0]] + (z[0] ** 2 + z[1] ** 2) * l[e] - 2 * (z[0] * P[e] + z[1] * Q[e])
         m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d=" % e[1])
@@ -84,14 +87,14 @@ def max_OPF_OPT(ins, cons=''):
             logging.info('\tLoss         = %09.6f' % (loss))
             pure_demand_P = np.sum([ins.loads_P[k] * x[k].x for k in T[e[0]][e[1]]['K']])
             pure_demand_Q = np.sum([ins.loads_Q[k] * x[k].x for k in T[e[0]][e[1]]['K']])
-            total_loss_P = P[e].x - pure_demand_P - dummy_p[e[1]].x
-            total_loss_Q = Q[e].x - pure_demand_Q - dummy_q[e[1]].x
+            total_loss_P = P[e].x - pure_demand_P# - dummy_p[e[1]].x
+            total_loss_Q = Q[e].x - pure_demand_Q# - dummy_q[e[1]].x
             T[e[0]][e[1]]['L'] = (total_loss_P, total_loss_Q)
             logging.info('\tTotal loss   = %09.6f' % np.sqrt(total_loss_P ** 2 + total_loss_Q ** 2))
             logging.info('\tPure demand  = %09.6f' % np.sqrt(pure_demand_P ** 2 + pure_demand_Q ** 2))
 
-            dummy = np.sqrt(dummy_p[e[1]].x ** 2 + dummy_q[e[1]].x ** 2)
-            logging.info('\t|dummy_S|    = %09.6f\t\tP,Q = (%09.6f,%09.6f)' % (dummy, dummy_p[e[1]].x, dummy_q[e[1]].x))
+            #dummy = np.sqrt(dummy_p[e[1]].x ** 2 + dummy_q[e[1]].x ** 2)
+            #logging.info('\t|dummy_S|    = %09.6f\t\tP,Q = (%09.6f,%09.6f)' % (dummy, dummy_p[e[1]].x, dummy_q[e[1]].x))
 
             if (S_ != 0): logging.info('\tloss to pow. = %09.6f' % (loss / S_))
             logging.info('\tloss to cap. = %09.6f' % (loss / T[e[0]][e[1]]['C']))
@@ -99,6 +102,22 @@ def max_OPF_OPT(ins, cons=''):
             logging.info('\t=== voltages ===')
         for i in T.nodes()[1:]:
             logging.info('\tv_%3d        = %f\t\t(diff = %e)' % (i, v[i].x, v[i].x - ins.v_min))
+    if debug:
+        for e in T.edges():
+            print '\t===== Edge: %s =====' % str(e)
+            S_ = np.sqrt(P[e].x ** 2 + Q[e].x ** 2)
+            print '\tC            = %09.6f' % (T[e[0]][e[1]]['C'])
+            print '\t|S|          = %09.6f\t\t      (diff = %.10f)' % (S_, S_ - T[e[0]][e[1]]['C'])
+            pure_demand_P = np.sum([ins.loads_P[k] * x[k].x for k in T[e[0]][e[1]]['K']])
+            pure_demand_Q = np.sum([ins.loads_Q[k] * x[k].x for k in T[e[0]][e[1]]['K']])
+            #pure_demand_P  = np.sum([x[k].x * ins.loads_P[k] for k in T.node[e[1]]['N']]) + np.sum(
+            #[P[(e[1], h)].x for h in T.edge[e[1]].keys() if e[1] < h]) #+ dummy_p[e[1]]
+            #pure_demand_Q  = np.sum([x[k].x * ins.loads_Q[k] for k in T.node[e[1]]['N']]) + np.sum(
+            #    [Q[(e[1], h)].x for h in T.edge[e[1]].keys() if e[1] < h]) #+ dummy_p[e[1]]
+            pure_S = np.sqrt(pure_demand_P**2 + pure_demand_Q**2)
+            print '\tpure |S|    = %09.6f\t\t' %(pure_S)
+
+            print '\tP,Q          = %09.6f, %09.6f' % (P[e].x, Q[e].x)
 
     sol = a.maxOPF_sol()
     sol.obj = obj.getValue()
@@ -116,22 +135,89 @@ def max_OPF_OPT(ins, cons=''):
 
     return sol
 
-
-def min_loss_OPF(ins, x, cons=''):
+def max_OPF_OPT_fixed(ins, X, cons='', tolerance = 0.0001):
     t1 = time.time()
     T = ins.topology
     m = gbp.Model("qcp")
     u.gurobi_setting(m)
 
-    dummy_p = {i: 0 for i in T.nodes()}
-    dummy_q = {i: 0 for i in T.nodes()}
+    x = [0] * ins.n
     v = {i: 0 for i in T.nodes()}
     v[0] = ins.v_0
     l = {e: 0 for e in T.edges()}
     P = {e: 0 for e in T.edges()}
     Q = {e: 0 for e in T.edges()}
-    for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
-    for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
+    for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % k)
+    for k in ins.F: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
+    for i in T.nodes()[1:]:
+        v[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="v_%d" % i)
+    for e in T.edges(): l[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="l_%s" % str(e))
+    for e in T.edges(): P[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(e))
+    for e in T.edges(): Q[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="Q_%s" % str(e))
+    m.update()
+
+    obj = gbp.quicksum(x[k] * ins.loads_utilities[k] for k in range(ins.n))
+    m.setObjective(obj, gbp.GRB.MAXIMIZE)
+
+    for e in T.edges():
+        z = T[e[0]][e[1]]['z']
+
+        m.addQConstr(l[e] * v[e[0]], gbp.GRB.GREATER_EQUAL, (P[e] * P[e] + Q[e] * Q[e]),
+                     "l_%s" % str(e))  # l= |S|^2/ v_i
+        rhs_P = l[e] * z[0] + gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+            [P[(e[1], h)] for h in T.edge[e[1]].keys() ])# + dummy_p[e[1]]
+        rhs_Q = l[e] * z[1] + gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+            [Q[(e[1], h)] for h in T.edge[e[1]].keys() ])# + dummy_q[e[1]]
+        m.addQConstr(rhs_P-tolerance <= P[e], "P_%s=" % str(e))
+        m.addQConstr(rhs_P+tolerance >= P[e], "P_%s=" % str(e))
+        m.addQConstr(rhs_Q-tolerance <=Q[e] <= rhs_Q+tolerance, "Q_%s=" % str(e))
+
+        rhs_v = v[e[0]] + (z[0] ** 2 + z[1] ** 2) * l[e] - 2 * (z[0] * P[e] + z[1] * Q[e])
+        m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d=" % e[1])
+
+        if cons == 'C' or cons == '':
+            m.addQConstr(P[e] * P[e] + Q[e] * Q[e], gbp.GRB.LESS_EQUAL, T[e[0]][e[1]]['C'] ** 2,
+                         "C_%s" % str(e))  # capacity constraint
+        if cons == 'V' or cons == '':
+            m.addConstr(v[e[1]], gbp.GRB.GREATER_EQUAL, ins.v_min, "v_%d" % e[1])  # voltage constraint
+    for i in ins.F:
+        m.addConstr(x[i], gbp.GRB.EQUAL,X[i], "x[%d]: ub")
+    m.update()
+    m.optimize()
+
+
+    sol = a.maxOPF_sol()
+    u.gurobi_handle_errors(m)
+    if (m.status in [3,12] ):#infeasible or numeric error
+        sol.obj = -np.inf
+        return sol
+    else:
+        sol.obj = obj.getValue()
+    sol.status = m
+
+    sol.running_time = time.time() - t1
+
+    return sol
+
+def min_loss_OPF(ins, x, cons='', tolerance = 0.0001 , v_tolerance = 0.1):
+    t1 = time.time()
+    T = ins.topology
+    m = gbp.Model("qcp")
+    u.gurobi_setting(m)
+    #m.setParam("NumericFocus",3) #0 automatic, 1-3 means how hard gurobi check numeric accuracty
+    #m.setParam("IntFeasTol", 0.01)
+    #m.setParam("MIPGapAbs", 0.01)
+
+
+    #dummy_p = {i: 0 for i in T.nodes()}
+    #dummy_q = {i: 0 for i in T.nodes()}
+    v = {i: 0 for i in T.nodes()}
+    v[0] = ins.v_0
+    l = {e: 0 for e in T.edges()}
+    P = {e: 0 for e in T.edges()}
+    Q = {e: 0 for e in T.edges()}
+    #for k in T.nodes(): dummy_p[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p[%d]" % k)
+    #for k in T.nodes(): dummy_q[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q[%d]" % k)
     for k in T.nodes()[1:]:
         v[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="v_%d" % k)
     for e in T.edges(): l[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="l_%s" % str(e))
@@ -140,6 +226,8 @@ def min_loss_OPF(ins, x, cons=''):
     m.update()
 
     obj = gbp.quicksum([l[e] * np.sqrt(T[e[0]][e[1]]['z'][0] ** 2 + T[e[0]][e[1]]['z'][0] ** 2) for e in T.edges()])
+    #obj = gbp.quicksum([l[e] for e in T.edges()])
+   
     m.setObjective(obj, gbp.GRB.MINIMIZE)
 
     for e in T.edges():
@@ -147,18 +235,25 @@ def min_loss_OPF(ins, x, cons=''):
 
         m.addQConstr(l[e] * v[e[0]], gbp.GRB.GREATER_EQUAL, (P[e] * P[e] + Q[e] * Q[e]),
                      "l_%s" % str(e))  # l= |S|^2/ v_i
-        m.addConstr(dummy_p[e[1]] >= 0, "dummy_P_%d" % e[1])
+        #m.addConstr(dummy_p[e[1]] >= -tolerance, "dummy_P_%d" % e[1])
+       # m.addConstr(tolerance >= dummy_q[e[1]] >= -tolerance, "dummy_P_%d" % e[1])
 
         # index_set = set(T.node[e[1]]['N']).intersection(set(idx))
         rhs_P = l[e] * z[0] + gbp.quicksum([ins.loads_P[k] * x[k] for k in T.node[e[1]]['N']]) + gbp.quicksum(
-            [P[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_p[e[1]]
+            [P[(e[1], h)] for h in T.edge[e[1]].keys() ])# + dummy_p[e[1]]
         rhs_Q = l[e] * z[1] + gbp.quicksum([ins.loads_Q[k] * x[k] for k in T.node[e[1]]['N']]) + gbp.quicksum(
-            [Q[(e[1], h)] for h in T.edge[e[1]].keys() ]) + dummy_q[e[1]]
-        m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
-        m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
+            [Q[(e[1], h)] for h in T.edge[e[1]].keys() ])# + dummy_q[e[1]]
+        #m.addQConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
+        m.addQConstr(rhs_P + tolerance >= P[e] , "P_%s=" % str(e))
+        m.addQConstr( P[e] >= rhs_P - tolerance, "P_%s=" % str(e))
+        #m.addQConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
+        m.addQConstr(rhs_Q + tolerance >= Q[e], "Q_%s=" % str(e))
+        m.addQConstr( Q[e] >= rhs_Q - tolerance, "Q_%s=" % str(e))
 
         rhs_v = v[e[0]] + (z[0] ** 2 + z[1] ** 2) * l[e] - 2 * (z[0] * P[e] + z[1] * Q[e])
-        m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d=" % e[1])
+        #m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d=" % e[1])
+        m.addConstr(v[e[1]] >= rhs_v - v_tolerance, "l_v_%d=" % e[1])
+        m.addConstr(rhs_v + v_tolerance >= v[e[1]] , "r_v_%d=" % e[1])
 
         if cons == 'C' or cons == '':
             m.addQConstr(P[e] * P[e] + Q[e] * Q[e], gbp.GRB.LESS_EQUAL, T[e[0]][e[1]]['C'] ** 2,
@@ -172,15 +267,15 @@ def min_loss_OPF(ins, x, cons=''):
     sol.status = m.status
     sol.m = m
     sol.running_time = time.time() - t1
+    
+    # u.gurobi_handle_errors(m)
 
-    if (m.status == 3):
+    if (m.status in [3,12] ):#infeasible or numeric error
         # logging.warning("Infeasible!")
         sol.obj = -np.inf
         return sol
-    # if (u.gurobi_handle_errors(m) == False):
-    #     sol.obj = -np.inf
-    #     return sol
-    #sol.obj = obj.getValue()
+    else:
+        sol.obj = obj.getValue()
 
     if logging.getLogger().getEffectiveLevel() == logging.INFO:
         for e in T.edges():
