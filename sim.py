@@ -8,9 +8,134 @@ import instance as ii
 import s_maxOPF_algs as ss
 import OPF_algs as oo
 
+
+# topology = [13 | 123]
+def sim1_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
+                dump_dir="results/dump/", topology=123):
+    name = "TPS:[%s]__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
+        scenario, topology, F_percentage, max_n, step_n, start_n, reps)
+    ### set up variables
+    assert (max_n % step_n == 0)
+    cons = ''
+    t1 = time.time()
+    #####
+
+
+    round_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_OPF_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+    no_LP_round_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    no_LP_round_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    no_LP_round_OPF_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+    OPT_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    OPT_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+    for n in range(start_n, max_n + 1, step_n):
+        for i in range(reps):
+            elapsed_time = time.time() - t1
+            m, s = divmod(elapsed_time, 60)
+            h, m = divmod(m, 60)
+            print "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+            print name
+            print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+            print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+            T = None
+            if topology == 13:
+                T = ii.network_csv_load(filename='test-feeders/13-node.csv')
+            elif topology == 123:
+                T = ii.network_csv_load(filename='test-feeders/feeder123-ieee.csv')
+
+            opt_err_count = 0
+            ins = ii.sim_instance(T, scenario=scenario, n=n, F_percentage=F_percentage)
+
+            ### opt
+            sol_opt = oo.min_OPF_OPT(ins)
+            print "OPT obj:              %15.2f  |  time: %5.3f" % (
+                sol_opt.obj, sol_opt.running_time)
+            OPT_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
+            OPT_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
+            ##############
+
+            ### round_OPF
+            sol = oo.round_OPF(ins)
+            sol.ar = sol.obj / sol_opt.obj
+            print "round_OPF obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                sol.obj, sol.running_time, sol.ar)
+
+            round_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol.obj
+            round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol.running_time
+            round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol.ar
+            ##############
+
+            ### no LP round_OPF
+            sol = oo.round_OPF(ins, use_LP=False)
+            sol.ar = sol.obj / sol_opt.obj
+            print "round_OPF obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                sol.obj, sol.running_time, sol.ar)
+
+            no_LP_round_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol.obj
+            no_LP_round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol.running_time
+            no_LP_round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol.ar
+            ##############
+
+        # intermediate saving
+        if dry_run == False:
+            np.savez(dump_dir + name,
+                     round_OPF_obj=round_OPF_obj,
+                     round_OPF_ar=round_OPF_ar,
+                     round_OPF_time=round_OPF_time,
+                     no_LP_round_OPF_obj=no_LP_round_OPF_obj,
+                     no_LP_round_OPF_ar=no_LP_round_OPF_ar,
+                     no_LP_round_OPF_time=no_LP_round_OPF_time,
+                     OPT_obj=OPT_obj,
+                     OPT_time=OPT_time)
+    x = np.arange(start_n, max_n + 1, step_n)
+    x = x.reshape((len(x), 1))
+
+    mean_yerr_round_OPF_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_obj)), 1)
+    mean_yerr_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y),     round_OPF_ar)), 1)
+    mean_yerr_round_OPF_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_time)), 1)
+
+    mean_yerr_no_LP_round_OPF_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_obj)), 1)
+    mean_yerr_no_LP_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y),     no_LP_round_OPF_ar)), 1)
+    mean_yerr_no_LP_round_OPF_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_time)), 1)
+
+    mean_yerr_OPT_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
+    mean_yerr_OPT_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_time)), 1)
+
+    print mean_yerr_round_OPF_ar
+
+    if dry_run == False:
+        np.savez(dump_dir + name,
+                 round_OPF_obj=round_OPF_obj,
+                 round_OPF_ar=round_OPF_ar,
+                 round_OPF_time=round_OPF_time,
+                 no_LP_round_OPF_obj=no_LP_round_OPF_obj,
+                 no_LP_round_OPF_ar=no_LP_round_OPF_ar,
+                 no_LP_round_OPF_time=no_LP_round_OPF_time,
+                 OPT_obj=OPT_obj,
+                 OPT_time=OPT_time,
+                 mean_yerr_round_OPF_obj=mean_yerr_round_OPF_obj,
+                 mean_yerr_round_OPF_ar=mean_yerr_round_OPF_ar,
+                 mean_yerr_round_OPF_time=mean_yerr_round_OPF_time,
+                 mean_yerr_no_LP_round_OPF_obj=mean_yerr_no_LP_round_OPF_obj,
+                 mean_yerr_no_LP_round_OPF_ar=mean_yerr_no_LP_round_OPF_ar,
+                 mean_yerr_no_LP_round_OPF_time=mean_yerr_no_LP_round_OPF_time,
+                 mean_yerr_OPT_obj=mean_yerr_OPT_obj,
+                 mean_yerr_OPT_time=mean_yerr_OPT_time)
+    fin_time = time.time() - t1
+    m, s = divmod(fin_time, 60)
+    h, m = divmod(m, 60)
+    print "\n=== simulation finished in %d:%02d:%02d ===\n" % (h, m, s)
+
+    return name
+
+
 # topology = [38 | 123] (IEEE topology. The code can be cleaned up in future, only csv file should be given)
-def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
-        dump_dir="results/dump/", is_adaptive_loss = True, topology=123):
+def sim_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=True,
+               dump_dir="results/dump/", is_adaptive_loss=True, topology=123):
     name = "%s__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
         scenario, topology, F_percentage, max_n, step_n, start_n, reps)
     if is_adaptive_loss:
@@ -44,7 +169,6 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
     OPT_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     OPT_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
-
     for n in range(start_n, max_n + 1, step_n):
         for i in range(reps):
             elapsed_time = time.time() - t1
@@ -59,7 +183,7 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                 # T = ii.network_38node(loss_ratio=loss_ratio)
                 pass
             elif topology == 123:
-                T = ii.network_csv_load(filename='test-feeders/123-node-line-data.csv',loss_ratio=loss_ratio)
+                T = ii.network_csv_load(filename='test-feeders/123-node-line-data.csv', loss_ratio=loss_ratio)
 
             is_OPT_smaller = True
 
@@ -67,7 +191,7 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
             suboptimal2_count = 0
             opt_err_count = 0
             while is_OPT_smaller:
-                ins = ii.sim_instance(T, scenario=scenario, n=n, F_percentage=F_percentage,capacity_flag=capacity_flag)
+                ins = ii.sim_instance(T, scenario=scenario, n=n, F_percentage=F_percentage, capacity_flag=capacity_flag)
                 ### opt
                 sol_opt = oo.max_OPF_OPT(ins, cons)
                 print "OPT obj   :    %15.2f  |  time: %5.3f" % (
@@ -77,8 +201,7 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                 if is_adaptive_loss:
                     sol_opt_s = ss.adaptive_OPT(ins, cons=cons)
                 else:
-                    sol_opt_s = ss.OPT(ins, cons=cons,capacity_flag=capacity_flag)
-
+                    sol_opt_s = ss.OPT(ins, cons=cons, capacity_flag=capacity_flag)
 
                 ####### replace if OPTs is bigger
                 if sol_opt_s.obj > sol_opt.obj:
@@ -93,13 +216,10 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                 print "OPTs obj  :    %15.2f  |  time: %5.3f" % (
                     sol_opt_s.obj, sol_opt_s.running_time)
 
-
-
-
                 ### greedy
                 sol = None
                 if is_adaptive_loss:
-                    sol = ss.adaptive_greedy(ins,cons=cons, loss_step = loss_step)
+                    sol = ss.adaptive_greedy(ins, cons=cons, loss_step=loss_step)
                 elif F_percentage == 0:
                     sol = ss.greedy(ins, capacity_flag=capacity_flag, cons=cons)
                 else:
@@ -109,16 +229,18 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
                 print "Greedy obj:    %15.2f  |  time: %5.3f  |  AR (OPT, OPTs): %5.3f, %4.3f (%d groups)" % (
                     sol.obj, sol.running_time, sol.ar, sol.ar2, len(sol.groups))
 
-                if sol.ar > 1 or sol.ar2 >1: # or sol_opt_s.obj/sol_opt.obj > 1  :
+                if sol.ar > 1 or sol.ar2 > 1:  # or sol_opt_s.obj/sol_opt.obj > 1  :
                     if sol.ar > 1: suboptimal1_count += 1
                     if sol.ar2 > 1: suboptimal2_count += 1
-                    #if sol_opt_s.obj/sol_opt.obj > 1: opt_err_count += 1
-                    print '\n----- repeating (#Grd>OPT = %d, #Grd>OPTs = %d, #OPTs>OPT = %d): invalid OPT --------'%(suboptimal1_count, suboptimal2_count,opt_err_count)
+                    # if sol_opt_s.obj/sol_opt.obj > 1: opt_err_count += 1
+                    print '\n----- repeating (#Grd>OPT = %d, #Grd>OPTs = %d, #OPTs>OPT = %d): invalid OPT --------' % (
+                    suboptimal1_count, suboptimal2_count, opt_err_count)
                     print name
                     print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
 
                     continue
-                else: is_OPT_smaller = False
+                else:
+                    is_OPT_smaller = False
 
                 greedy_obj[(n - start_n + step_n) / step_n - 1, i] = sol.obj
                 greedy_time[(n - start_n + step_n) / step_n - 1, i] = sol.running_time
@@ -200,14 +322,4 @@ def sim(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, r
 if __name__ == "__main__":
     # import logging
     # logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
-    sim(scenario="FCM", F_percentage=0.75, max_n=1500, step_n=100, start_n=100, reps=50)
-
-
-
-
-
-    
-    
-
-   
-    
+    sim_TCNS16(scenario="FCM", F_percentage=0.75, max_n=1500, step_n=100, start_n=100, reps=50, dry_run=True)

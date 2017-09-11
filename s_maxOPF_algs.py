@@ -18,7 +18,7 @@ except ImportError: logging.warning("Grubi not available!!")
 # capacity_flag = ['C_'|'C'] tell which edge attribute in ins.topology corresponds to capacity
 def greedy_card(ins, cons='', fixed_demands_P=None, fixed_demands_Q=None, capacity_flag='C_'):
     t1 = time.time()
-    sol = a.maxOPF_sol()
+    sol = a.OPF_sol()
     T = ins.topology
     idx = None
     if ins.I is None:
@@ -121,7 +121,7 @@ def greedy(ins, cons='', capacity_flag='C_', fixed_demands_P=None, fixed_demands
             # print 'N[%d]= '%i, N[i]
             # print 'util = ', [rounded_util[k] for k in N[i]]
     groups = N.keys()
-    max_sol = a.maxOPF_sol()
+    max_sol = a.OPF_sol()
     max_sol.obj = 0
     for i in groups:
         ins_g.I = N[i]
@@ -174,7 +174,7 @@ def greedy_slow(ins, cons='', capacity_flag='C_', fixed_demands_P=None, fixed_de
             # print 'N[%d]= '%i, N[i]
             # print 'util = ', [rounded_util[k] for k in N[i]]
     groups = N.keys()
-    max_sol = a.maxOPF_sol()
+    max_sol = a.OPF_sol()
     max_sol.obj = 0
     for i in groups:
         ins_g.I = np.array(list(N[i]))
@@ -330,7 +330,7 @@ def OPT_slow(ins, cons='', capacity_flag='C_'):
     m.update()
     m.optimize()
 
-    sol = a.maxOPF_sol()
+    sol = a.OPF_sol()
     sol.status = m.status
     sol.running_time = time.time() - t1
     if (u.gurobi_handle_errors(m) == False):
@@ -402,7 +402,7 @@ def OPT(ins, cons='', capacity_flag='C_', debug=False, tolerance = 0.001):
     m.update()
     m.optimize()
 
-    sol = a.maxOPF_sol()
+    sol = a.OPF_sol()
     sol.status = m.status
     sol.running_time = time.time() - t1
     if (u.gurobi_handle_errors(m) == False):
@@ -485,7 +485,7 @@ def OPT_with_dummy(ins, cons='', capacity_flag='C_'):
     m.update()
     m.optimize()
 
-    sol = a.maxOPF_sol()
+    sol = a.OPF_sol()
     sol.status = m.status
     sol.running_time = time.time() - t1
     if (u.gurobi_handle_errors(m) == False):
