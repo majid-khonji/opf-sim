@@ -1,21 +1,26 @@
 # encoding=utf8
 __author__ = 'Majid Khonji'
 
+
 import numpy as np
 import time, pickle
 import util as u
 import instance as ii
 import s_maxOPF_algs as ss
 import OPF_algs as oo
+import logging
 
 
 # topology = [13 | 123]
-def sim1_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
-                dump_dir="results/dump/", topology=123):
+def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
+            dump_dir="results/dump/", topology=123):
     name = "TPS:[%s]__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
         scenario, topology, F_percentage, max_n, step_n, start_n, reps)
     ### set up variables
     assert (max_n % step_n == 0)
+    logger = logging.getLogger()
+    logger.setLevel(logging.ERROR)
+
     cons = ''
     t1 = time.time()
     #####
@@ -24,13 +29,21 @@ def sim1_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_
     round_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     round_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     round_OPF_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_OPF_ar2= np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
     no_LP_round_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     no_LP_round_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     no_LP_round_OPF_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
+    frac_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    frac_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    frac_OPF_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
     OPT_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     OPT_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+    failure_count = {}
+    failure_less_then_one_opt_obj_count = {}
 
     for n in range(start_n, max_n + 1, step_n):
         for i in range(reps):
@@ -40,67 +53,129 @@ def sim1_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_
             print "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
             print name
             print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
-            print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-            T = None
-            if topology == 13:
-                T = ii.network_csv_load(filename='test-feeders/13-node.csv')
-            elif topology == 123:
-                T = ii.network_csv_load(filename='test-feeders/feeder123-ieee.csv')
 
-            opt_err_count = 0
-            ins = ii.sim_instance(T, scenario=scenario, n=n, F_percentage=F_percentage)
+            success = False
+            failure_count[(n,i)] = 0
+            failure_less_then_one_opt_obj_count[(n,i)] = 0
+            while success == False:
+                T = None
+                if topology == 13:
+                    T = ii.network_csv_load(filename='test-feeders/13-node.csv')
+                elif topology == 123:
+                    T = ii.network_csv_load(filename='test-feeders/feeder123-ieee.csv')
 
-            ### opt
-            sol_opt = oo.min_OPF_OPT(ins)
-            print "OPT obj:              %15.2f  |  time: %5.3f" % (
-                sol_opt.obj, sol_opt.running_time)
-            OPT_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
-            OPT_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
-            ##############
+                ins = ii.sim_instance(T, scenario=scenario, n=n, F_percentage=F_percentage)
 
-            ### round_OPF
-            sol = oo.round_OPF(ins)
-            sol.ar = sol.obj / sol_opt.obj
-            print "round_OPF obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
-                sol.obj, sol.running_time, sol.ar)
+                ### opt
+                sol_opt = oo.min_OPF_OPT(ins)
+                OPT_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
+                OPT_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
+                if sol_opt.obj < 1:
+                    failure_less_then_one_opt_obj_count[(n,i)] += 1
+                    print "\n─── too small obj: [retry count %d]\n" % failure_less_then_one_opt_obj_count[(n,i)]
+                    elapsed_time = time.time() - t1
+                    m, s = divmod(elapsed_time, 60)
+                    h, m = divmod(m, 60)
+                    print name
+                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+                    continue
 
-            round_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol.obj
-            round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol.running_time
-            round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol.ar
-            ##############
+                print "OPT obj:              %15.2f  |  time: %5.3f" % (
+                    sol_opt.obj, sol_opt.running_time)
+                ##############
 
-            ### no LP round_OPF
-            sol = oo.round_OPF(ins, use_LP=False)
-            sol.ar = sol.obj / sol_opt.obj
-            print "round_OPF obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
-                sol.obj, sol.running_time, sol.ar)
+                ### frac_OPF
+                sol_frac = oo.min_OPF_OPT(ins, fractional=True)
+                # some times the fractional is not well-rounded
+                if sol_frac > sol_opt:
+                    sol_frac = sol_opt
+                sol_frac.ar = sol_frac.obj / sol_opt.obj
+                print "frac_OPF obj:         %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_frac.obj, sol_frac.running_time, sol_frac.ar)
 
-            no_LP_round_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol.obj
-            no_LP_round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol.running_time
-            no_LP_round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol.ar
-            ##############
+
+                frac_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol_frac.obj
+                frac_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol_frac.running_time
+                frac_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol_frac.ar
+                ##############
+
+
+
+                ### round_OPF
+                sol_round = oo.round_OPF(ins)
+                sol_round.ar = sol_round.obj / sol_opt.obj
+                sol_round.ar2 = sol_round.obj / sol_frac.obj
+                print "round_OPF obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_round.obj, sol_round.running_time, sol_round.ar)
+
+                round_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol_round.obj
+                round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol_round.running_time
+                round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
+                round_OPF_ar2[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar2
+                ##############
+
+                ### no LP round_OPF
+                sol_no_LP = oo.round_OPF(ins, use_LP=False)
+                sol_no_LP.ar = sol_no_LP.obj / sol_opt.obj
+                print "round_no_LP_OPF obj:  %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_no_LP.obj, sol_no_LP.running_time, sol_no_LP.ar)
+
+                no_LP_round_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.obj
+                no_LP_round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.running_time
+                no_LP_round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.ar
+                ##############
+
+                if sol_opt.succeed == False or sol_round.succeed == False or sol_no_LP.succeed == False or sol_frac == False or sol_round.obj < sol_frac.obj:
+                    failure_count[(n,i)] += 1
+                    print "\n─── Failure in solving one of the problems: [retry count %d]" % failure_count[(n,i)]
+                    print "sol_opt.succeed: ", sol_opt.succeed
+                    print "sol_round.succeed: ", sol_round.succeed
+                    print "sol_no_LP.succeed: ", sol_no_LP.succeed
+                    print "sol_frac.succeed: ", sol_frac.succeed
+                    print "frac > round: ", sol_round.obj < sol_frac.obj
+                    print ''
+
+                    elapsed_time = time.time() - t1
+                    m, s = divmod(elapsed_time, 60)
+                    h, m = divmod(m, 60)
+                    print name
+                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+                    continue
+                success = True
+                print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
         # intermediate saving
         if dry_run == False:
             np.savez(dump_dir + name,
+                     failure_count=failure_count,
+                     failure_less_then_one_opt_obj_count=failure_less_then_one_opt_obj_count,
                      round_OPF_obj=round_OPF_obj,
                      round_OPF_ar=round_OPF_ar,
+                     round_OPF_ar2=round_OPF_ar2,
                      round_OPF_time=round_OPF_time,
                      no_LP_round_OPF_obj=no_LP_round_OPF_obj,
                      no_LP_round_OPF_ar=no_LP_round_OPF_ar,
                      no_LP_round_OPF_time=no_LP_round_OPF_time,
+                     frac_OPF_obj=frac_OPF_obj,
+                     frac_OPF_ar=frac_OPF_ar,
+                     frac_OPF_time=frac_OPF_time,
                      OPT_obj=OPT_obj,
                      OPT_time=OPT_time)
     x = np.arange(start_n, max_n + 1, step_n)
     x = x.reshape((len(x), 1))
 
     mean_yerr_round_OPF_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_obj)), 1)
-    mean_yerr_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y),     round_OPF_ar)), 1)
+    mean_yerr_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_ar)), 1)
+    mean_yerr_round_OPF_ar2 = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_ar2)), 1)
     mean_yerr_round_OPF_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_time)), 1)
 
     mean_yerr_no_LP_round_OPF_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_obj)), 1)
-    mean_yerr_no_LP_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y),     no_LP_round_OPF_ar)), 1)
+    mean_yerr_no_LP_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_ar)), 1)
     mean_yerr_no_LP_round_OPF_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_time)), 1)
+
+    mean_yerr_frac_OPF_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), frac_OPF_obj)), 1)
+    mean_yerr_frac_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y), frac_OPF_ar)), 1)
+    mean_yerr_frac_OPF_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), frac_OPF_time)), 1)
 
     mean_yerr_OPT_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
     mean_yerr_OPT_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_time)), 1)
@@ -109,8 +184,11 @@ def sim1_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_
 
     if dry_run == False:
         np.savez(dump_dir + name,
+                 failure_count=failure_count,
+                 failure_less_then_one_opt_obj_count=failure_less_then_one_opt_obj_count,
                  round_OPF_obj=round_OPF_obj,
                  round_OPF_ar=round_OPF_ar,
+                 round_OPF_ar2=round_OPF_ar2,
                  round_OPF_time=round_OPF_time,
                  no_LP_round_OPF_obj=no_LP_round_OPF_obj,
                  no_LP_round_OPF_ar=no_LP_round_OPF_ar,
@@ -119,10 +197,14 @@ def sim1_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_
                  OPT_time=OPT_time,
                  mean_yerr_round_OPF_obj=mean_yerr_round_OPF_obj,
                  mean_yerr_round_OPF_ar=mean_yerr_round_OPF_ar,
+                 mean_yerr_round_OPF_ar2=mean_yerr_round_OPF_ar2,
                  mean_yerr_round_OPF_time=mean_yerr_round_OPF_time,
                  mean_yerr_no_LP_round_OPF_obj=mean_yerr_no_LP_round_OPF_obj,
                  mean_yerr_no_LP_round_OPF_ar=mean_yerr_no_LP_round_OPF_ar,
                  mean_yerr_no_LP_round_OPF_time=mean_yerr_no_LP_round_OPF_time,
+                 mean_yerr_frac_OPF_obj=mean_yerr_frac_OPF_obj,
+                 mean_yerr_frac_OPF_ar=mean_yerr_frac_OPF_ar,
+                 mean_yerr_frac_OPF_time=mean_yerr_frac_OPF_time,
                  mean_yerr_OPT_obj=mean_yerr_OPT_obj,
                  mean_yerr_OPT_time=mean_yerr_OPT_time)
     fin_time = time.time() - t1
@@ -234,7 +316,7 @@ def sim_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n
                     if sol.ar2 > 1: suboptimal2_count += 1
                     # if sol_opt_s.obj/sol_opt.obj > 1: opt_err_count += 1
                     print '\n----- repeating (#Grd>OPT = %d, #Grd>OPTs = %d, #OPTs>OPT = %d): invalid OPT --------' % (
-                    suboptimal1_count, suboptimal2_count, opt_err_count)
+                        suboptimal1_count, suboptimal2_count, opt_err_count)
                     print name
                     print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
 

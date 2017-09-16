@@ -40,47 +40,45 @@ def PTAS(ins, guess_set_size=1, use_LP=True):
     return best_sol
 
 
+# we use the same objective as min_OPF_OPT: penalty + loss + 1
+# some nasty tricks: if solve_remaining fails, we take loss from the fractional solution (its a bound, right?)
 def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
     T = ins.topology
     sol = min_OPF_OPT(ins, guess_x=guess_x, fractional=True)
-    if use_LP:
-        # print 'calling lp'
-        customers = np.setdiff1d(ins.I, guess_x)
-        sol_lp = _LP(ins, sol, customers)
-        if sol_lp.succeed:
-            for k in customers:
-                sol.x[k] = sol_lp.x[k]
-        else:
-            sol.succeed = False
-            return sol
-    for k in ins.I:
-        if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
-            sol.x[k] = 0
-            # print "%d rounded from %f"%(k,sol.x[k])
-        elif sol.x[k] < ins.rounding_tolerance:
-            sol.x[k] = 0
+    if sol.succeed:
+        if use_LP:
+            # print 'calling lp'
+            customers = np.setdiff1d(ins.I, guess_x)
+            sol_lp = _LP(ins, sol, customers)
+            if sol_lp.succeed:
+                for k in customers:
+                    sol.x[k] = sol_lp.x[k]
+            else:
+                sol.succeed = False
+                return sol
+        for k in ins.I:
+            if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
+                sol.x[k] = 0
+                # print "%d rounded from %f"%(k,sol.x[k])
+            # elif sol.x[k] < ins.rounding_tolerance:
+            #     sol.x[k] = 0
             # elif sol.x[k] > 1 - ins.rounding_tolerance:
             #     sol.x[k] = 1
 
-    sol2 = _solve_remaining(ins, guess_x=sol.x)
-    if sol2.succeed:
-
-
-        # fully manual obj
-        # first_node = T.edge[0].keys()[0]
-        # z = T[0][first_node]['z']
-        # sol.P_0 = sol.P[(0, first_node)].X
-        # subtree_edges = nx.bfs_edges(T, first_node)
-        # loss_p = sol.l[(0,first_node)].x*z[0] + np.sum([sol.l[h].x*T[h[0]][h[1]]['z'][0] for h in subtree_edges])
-        # obj = ins.gen_cost * loss_p
-        # obj += np.sum([(1 - sol.x[k]) * ins.loads_utilities[k] for k in np.arange(ins.n)])
-
-        obj = ins.gen_cost * sol2.P_0
+        obj = 1
         for k in range(ins.n):
             obj += (1 - sol.x[k]) * ins.loads_utilities[k]
+        sol2 = _solve_remaining(ins, guess_x=sol.x)
+        if sol2.succeed:
+            obj += T.graph['S_base'] * sol2.obj
+        else:
+            obj += T.graph['S_base'] * u.obj_min_loss_penalty(ins,sol,output='loss')
+            sol2.x = sol.x
+            sol2.succeed = True
         sol2.obj = obj
-
-    return sol2
+        return sol2
+    else:
+        return sol
 
 
 def _LP(ins, sol, customers=[], alg='lp'):
@@ -138,7 +136,7 @@ def _LP(ins, sol, customers=[], alg='lp'):
 
     return sol
 
-
+# minimizes loss
 def _solve_remaining(ins, guess_x={}, alg="solve_remaining"):
     t1 = time.time()
     T = ins.topology
@@ -163,29 +161,41 @@ def _solve_remaining(ins, guess_x={}, alg="solve_remaining"):
     # obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n)) + (ins.gen_cost) * P[
     #     root_edge]
     # obj = ins.gen_cost * P[root_edge]
-    obj = gbp.quicksum([l[e] for e in T.edges()])
+    obj = gbp.quicksum([ T[e[0]][e[1]]['z'][0]* l[e] for e in T.edges()])
     m.setObjective(obj, gbp.GRB.MINIMIZE)
     for e in T.edges():
         z = T[e[0]][e[1]]['z']
+        subtree_edges = nx.bfs_edges(T,e[1])
         m.addQConstr(l[e] * v[e[0]], gbp.GRB.GREATER_EQUAL, (P[e] * P[e] + Q[e] * Q[e]),
                      "l_%s" % str(e))  # l= |S|^2/ v_i
-        rhs_P = l[e] * z[0] + gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [P[(e[1], h)] for h in T.edge[e[1]].keys() if len(T.edge[e[1]]) > 1])
-        m.addConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
+        # rhs_P = l[e] * z[0] + gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+        #     [P[(e[1], h)] for h in T.edge[e[1]].keys() ])
+        # rhs_P = l[e] * z[0] + gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+        #     [P[(e[1], h)] for h in T.edge[e[1]].keys() if len(T.edge[e[1]]) > 1])
+        rhs_P = l[e] * z[0] + gbp.quicksum([x[k] * ins.loads_P[k] for k in T[e[0]][e[1]]['K']]) + gbp.quicksum(
+            [l[h]*z[0] for h in subtree_edges])
+        m.addConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s " % str(e))
 
-        rhs_Q = l[e] * z[1] + gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
-            [Q[(e[1], h)] for h in T.edge[e[1]].keys() if len(T.edge[e[1]]) > 1])
-        m.addConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
+        # rhs_Q = l[e] * z[1] + gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+        #     [Q[(e[1], h)] for h in T.edge[e[1]].keys()])
+        # rhs_Q = l[e] * z[1] + gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+        #     [Q[(e[1], h)] for h in T.edge[e[1]].keys() if len(T.edge[e[1]]) > 1])
+        rhs_Q = l[e] * z[1] + gbp.quicksum([x[k] * ins.loads_Q[k] for k in T[e[0]][e[1]]['K']]) + gbp.quicksum(
+            [l[h]*z[1] for h in subtree_edges])
+        m.addConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s " % str(e))
 
         rhs_v = v[e[0]] + (z[0] ** 2 + z[1] ** 2) * l[e] - 2 * (z[0] * P[e] + z[1] * Q[e])
-        m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d=" % e[1])
+        m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d " % e[1])
         # m.update()
 
         if ins.cons == 'C' or ins.cons == '':
             m.addQConstr(P[e] * P[e] + Q[e] * Q[e], gbp.GRB.LESS_EQUAL, T[e[0]][e[1]]['C'] ** 2,
                          "C_%s" % str(e))  # capacity constraint
         if ins.cons == 'V' or ins.cons == '':
-            m.addConstr(v[e[1]], gbp.GRB.GREATER_EQUAL, ins.v_min, "v_%d" % e[1])  # voltage constraint
+            m.addConstr(v[e[1]], gbp.GRB.GREATER_EQUAL, ins.v_min, "v_%d bound" % e[1])  # voltage constraint
+
+        m.addConstr(v[e[1]] >= 0, "v_%d+"%e[1])
+        m.addConstr(l[e] >= 0, "l_%s+"%str(e))
     m.update()
     # m.computeIIS()
     # m.write("model.ilp")
@@ -197,7 +207,7 @@ def _solve_remaining(ins, guess_x={}, alg="solve_remaining"):
 
     if u.gurobi_handle_errors(m, algname=alg):
         sol.obj = obj.getValue()
-        sol.x = x
+        sol.x = {k: x[k] for k in range(ins.n)}
         sol.l = l
         sol.P = P
         sol.Q = Q
@@ -214,11 +224,13 @@ def _solve_remaining(ins, guess_x={}, alg="solve_remaining"):
 
 
 # for TPS 2017
+# it has some quick and dirty tricks to make l tight
 def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False,tolerance=0.001, alg="min_OPF_OPT"):
     assert(ins.cons == '' or ins.cons == 'V' or ins.cons == 'C' )
     t1 = time.time()
     T = ins.topology
-    m = gbp.Model("qcp")
+    m = gbp.Model("min_OPF_OPT")
+
     u.gurobi_setting(m)
     x = {}
     v = {}
@@ -226,6 +238,7 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False,tolerance=0.001, 
     l = {}
     P = {}
     Q = {}
+    # dummy_p = {}; dummy_q = {}
     if fractional:
         for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
     else:
@@ -234,15 +247,21 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False,tolerance=0.001, 
     for k in ins.F: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
     for i in T.nodes()[1:]:
         v[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="v_%d" % i)
-    for e in T.edges(): l[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="l_%s" % str(e))
-    for e in T.edges(): P[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(e))
-    for e in T.edges(): Q[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="Q_%s" % str(e))
-    # m.update()
+        # dummy_p[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p_%d" % i)
+        # dummy_q[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q_%d" % i)
+    for e in T.edges():
+        l[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="l_%s" % str(e))
+        P[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(e))
+        Q[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="Q_%s" % str(e))
 
     ########## Objective #######
-    root_edge = (0, T.edge[0].keys()[0])
-    obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n)) + (ins.gen_cost) * P[
-        root_edge]
+    # root_edge = (0, T.edge[0].keys()[0])
+    # obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n)) + (ins.gen_cost) * P[
+    #     root_edge]
+
+    # loss minimization
+    obj = 1 + gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n)) +\
+          T.graph['S_base'] * gbp.quicksum([l[e]*(T[e[0]][e[1]]['z'][0]) for e in T.edges()])
     m.setObjective(obj, gbp.GRB.MINIMIZE)
 
     for e in T.edges():
@@ -251,22 +270,30 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False,tolerance=0.001, 
 
         m.addQConstr(l[e] * v[e[0]], gbp.GRB.GREATER_EQUAL, (P[e] * P[e] + Q[e] * Q[e]),
                      "l_%s" % str(e))  # l= |S|^2/ v_i
+
+        # rhs_P = l[e] * z[0] + gbp.quicksum([x[i] * ins.loads_P[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+        #     [P[(e[1], h)] for h in T.edge[e[1]].keys()])  # + dummy_p[e[1]]
         rhs_P = l[e] * z[0] + gbp.quicksum([x[k] * ins.loads_P[k] for k in T[e[0]][e[1]]['K']]) + gbp.quicksum(
             [l[h]*z[0] for h in subtree_edges])
 
-        # m.addConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s=" % str(e))
-        m.addConstr(P[e], gbp.GRB.LESS_EQUAL, rhs_P+tolerance, "P_%s=" % str(e))
-        m.addConstr(P[e], gbp.GRB.GREATER_EQUAL, rhs_P-tolerance, "P_%s=" % str(e))
+        m.addConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s" % str(e))
+        # m.addConstr(P[e], gbp.GRB.LESS_EQUAL, rhs_P+tolerance, "P_%s" % str(e))
+        # m.addConstr(P[e], gbp.GRB.GREATER_EQUAL, rhs_P-tolerance, "P_%s" % str(e))
 
+        # rhs_Q = l[e] * z[1] + gbp.quicksum([x[i] * ins.loads_Q[i] for i in T.node[e[1]]['N']]) + gbp.quicksum(
+        #     [Q[(e[1], h)] for h in T.edge[e[1]].keys()]) # + dummy_q[e[1]]
         rhs_Q = l[e] * z[1] + gbp.quicksum([x[k] * ins.loads_Q[k] for k in T[e[0]][e[1]]['K']]) + gbp.quicksum(
             [l[h]*z[1] for h in subtree_edges])
 
-        # m.addConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s=" % str(e))
-        m.addConstr(Q[e], gbp.GRB.LESS_EQUAL, rhs_Q+tolerance, "Q_%s=" % str(e))
-        m.addConstr(Q[e], gbp.GRB.GREATER_EQUAL, rhs_Q-tolerance, "Q_%s=" % str(e))
+        m.addConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s" % str(e))
+        # m.addConstr(Q[e], gbp.GRB.LESS_EQUAL, rhs_Q+tolerance, "Q_%s" % str(e))
+        # m.addConstr(Q[e], gbp.GRB.GREATER_EQUAL, rhs_Q-tolerance, "Q_%=" % str(e))
+
 
         rhs_v = v[e[0]] + (z[0] ** 2 + z[1] ** 2) * l[e] - 2 * (z[0] * P[e] + z[1] * Q[e])
-        m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d=" % e[1])
+        m.addConstr(v[e[1]], gbp.GRB.EQUAL, rhs_v, "v_%d" % e[1])
+
+
 
         if ins.cons == 'C' or ins.cons == '':
             m.addQConstr(P[e] * P[e] + Q[e] * Q[e], gbp.GRB.LESS_EQUAL, T[e[0]][e[1]]['C'] ** 2,
@@ -274,17 +301,26 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False,tolerance=0.001, 
         if ins.cons == 'V' or ins.cons == '':
             m.addConstr(v[e[1]], gbp.GRB.GREATER_EQUAL, ins.v_min, "v_%d" % e[1])  # voltage constraint
 
+        m.addConstr(v[e[1]] >= 0, "v_%d+:"%e[1])
+        m.addConstr(l[e] >= 0, "l_%s+:"%str(e))
+
+
+
+        # m.addConstr(dummy_p[e[1]], gbp.GRB.GREATER_EQUAL, 0, "dummy_P_%d" % e[1])
+        # m.addConstr(dummy_q[e[1]], gbp.GRB.GREATER_EQUAL, 0, "dummy_Q_%d" % e[1])
+
     for i in ins.F:
         m.addConstr(x[i] <= 1, "x[%d]: ub")
-        m.addConstr(x[i] >= 0, "x[%d]: lb")
+        # m.addConstr(x[i] >= 0, "x[%d]: lb")
     if fractional:
         for i in ins.I:
             m.addConstr(x[i] <= 1, "x[%d]: ub")
-            m.addConstr(x[i] >= 0, "x[%d]: lb")
+            # m.addConstr(x[i] >= 0, "x[%d]: lb")
     for k in guess_x.keys():
         m.addConstr(x[k], gbp.GRB.EQUAL, guess_x[k], "x[%d]: guess " % k)
 
     m.update()
+    #m.write('model.lp')
     m.optimize()
 
     sol = a.OPF_sol()
@@ -292,31 +328,14 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False,tolerance=0.001, 
     sol.gurobi_model = m
 
     if u.gurobi_handle_errors(m, algname=alg):
-
         sol.x = {k: x[k].x for k in range(ins.n)}
-        sol.idx = [k for k in ins.I if x[k].x == 1]
+        sol.obj = obj.getValue()
         sol.l = l
         sol.P = P
         sol.Q = Q
         sol.v = v
-
-        sol.obj = obj.getValue()
-
-
-        # manual objective
-        # print sol.obj
-        # first_node = T.edge[0].keys()[0]
-        # z = T[0][first_node]['z']
-        # sol.P_0 = P[(0, first_node)].X
-        # subtree_edges = nx.bfs_edges(T, first_node)
-        # loss_p = sol.l[(0,first_node)].x*z[0] + np.sum([sol.l[h].x*T[h[0]][h[1]]['z'][0] for h in subtree_edges])
-        # # print 'loss ', loss_p
-        # obj = ins.gen_cost * loss_p
-        # obj += np.sum([(1 - sol.x[k]) * ins.loads_utilities[k] for k in np.arange(ins.n)])
-        # sol.obj = obj
-
-        logging.info("\tx            = %s" % str(sol.x))
-        logging.info("\t{k: x_k>0}   = %s" % str([k for k in range(ins.n) if sol.x[k] > 0]))
+        first_node = T.edge[0].keys()[0]
+        sol.P_0 = P[(0, first_node)].X
         sol.succeed = True
     else:
         sol.succeed = False

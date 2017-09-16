@@ -82,7 +82,7 @@ def print_instance(ins, detailed=True):
 def print_customer(ins, k):
     print('------- customer: %d -------' % k)
     print('demand: (%f,%f)' % (ins.loads_P[k], ins.loads_Q[k]))
-    print 'Q values: ', {l: ins.Q[k:l] for l in ins.leaf_nodes}
+    print 'Q values: ', {l: ins.Q[(k,l)] for l in ins.leaf_nodes}
     print('attached bus: %d' % ins.customer_node[k])
     print('path: %s' % str(ins.customer_path_nodes[k]))
 
@@ -105,6 +105,9 @@ def validate_capacity(ins,sol, output='gap_c'):
     gap_q = {}
     loss_q = {}
 
+    gap_l_p = {}
+    gap_l_q = {}
+
     gap_c= {}
 
     T = ins.topology
@@ -116,18 +119,25 @@ def validate_capacity(ins,sol, output='gap_c'):
         loss_p[e]= sol.l[e].x*z[0] + np.sum([sol.l[h].x*T[h[0]][h[1]]['z'][0] for h in subtree_edges])
         P[e] = x_p[e] + loss_p[e]
         gap_p[e] = sol.P[e].x - P[e]
+        # gap_l_p[e] = sol.l[e].x - loss_p[e]/z[0]
 
         x_q[e] = np.sum([sol.x[k] * ins.loads_Q[k] for k in ins.topology.edge[e[0]][e[1]]['K']])
         loss_q[e]= sol.l[e].x*z[1] + np.sum([sol.l[h].x*T[h[0]][h[1]]['z'][1] for h in subtree_edges])
         Q[e] = x_q[e] + loss_q[e]
         gap_q[e] = sol.Q[e].x - Q[e]
+        # gap_l_q[e] = sol.l[e].x - loss_q[e]/z[1]
 
-        gap_c[e] = np.sqrt(T[e[0]][e[1]]['C']**2 - (gap_p[e]**2 + gap_q[e]**2 ))
+        gap_c[e] = np.sqrt(T[e[0]][e[1]]['C']**2 - (P[e]**2 + Q[e]**2 ))
+        # gap_c[e] = np.sqrt(T[e[0]][e[1]]['C']**2 - (sol.P[e].x**2 + sol.Q[e].x**2 ))
 
     if output == 'gap_c':
         return gap_c
     elif output == 'gap_p':
         return gap_p
+    elif output == 'gap_l_p':
+        return gap_l_p
+    elif output == 'gap_l_q':
+        return gap_l_q
     elif output == 'P':
         return P
     elif output == 'x_p':
@@ -143,6 +153,21 @@ def validate_capacity(ins,sol, output='gap_c'):
     elif output == 'l_q':
         return loss_q
 
+
+def obj_min_loss_penalty(ins, sol, output='obj'):
+    T = ins.topology
+    loss = np.sum([sol.l[e].x*(T[e[0]][e[1]]['z'][0]) for e in T.edges()])
+    penalty = 0
+    for k in range(ins.n):
+        penalty+= (1 - sol.x[k]) * ins.loads_utilities[k]
+    if output=='obj':
+        return penalty+loss
+    if output=='obj2':
+        return penalty+loss*ins.topology.graph['S_base']
+    if output=='loss':
+        return loss
+    if output =='penalty':
+        return penalty
 def mean_yerr(a, c=0.95):
     n = len(a)
     m, se = np.mean(a), stats.sem(a)

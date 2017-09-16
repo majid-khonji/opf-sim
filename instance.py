@@ -47,7 +47,7 @@ class OPF_instance(object):
 
 class OPF_sol(object):
     def __init__(self):
-        self.obj = 0;
+        self.obj = -1
         self.idx = [];  # if all are integer (F=[])
         self.running_time = 0;
         ar = None  # aproximation ratio
@@ -66,7 +66,7 @@ class OPF_sol(object):
 # cons=''|'V'|'C'|
 # gen_cost cost of generation
 def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
-                 n=10,
+                 n=10,per_unit=True, voltage_deviation_percentage=5,
                  cus_load_range=(500, 5000), capacity_flag='C_',
                  ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
                  v_min=0.81000, cons='', gen_cost=.01):
@@ -76,8 +76,8 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
 
     assert (scenario[0] in ['F', 'A'] and scenario[1] in ['C', 'U', '1'] and scenario[2] in ['R', 'I', 'M'])
     # initialize
-    for k in T.nodes():
-        T.node[k]['N'] = []  # customers on node i
+    for i in T.nodes():
+        T.node[i]['N'] = []  # customers on node i
         # T.node[k]['v'] = 0   # voltage
     nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
 
@@ -92,9 +92,14 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
     ins.leaf_edges = T.graph['leaf_edges']
     ins.F = np.random.choice(n, int(round(F_percentage * n)), replace=False)
     ins.I = np.setdiff1d(np.arange(n), ins.F)
-    ins.v_0 = v_0
-    ins.v_max = v_max
-    ins.v_min = v_min
+    if per_unit:
+        ins.v_0 = v_0
+        ins.v_max = v_max
+        ins.v_min = v_min
+    else:
+        ins.v_0 = T.graph['V_base']**2 # remember |V|^2 = v
+        ins.v_max = ins.v_0*(1+voltage_deviation_percentage/100.)
+        ins.v_min = ins.v_0*(1-voltage_deviation_percentage/100.)
     ins.V_ = (v_0 - v_min) / 2
     loads_S = None
     loads_angles = None
@@ -105,7 +110,7 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
     if scenario[2] == 'R':  # commercial customers
         loads_S = np.random.uniform(cus_load_range[0], cus_load_range[1], n)
     elif scenario[2] == 'I':  # industrial
-        loads_S = np.random.uniform(0, ind_load_range[1], n)
+        loads_S = np.random.uniform(ind_load_range[0], ind_load_range[1], n)
     elif scenario[2] == 'M':  # mixed
         r = np.random.randint(0, round(industrial_cus_max_percentage * n))
         industrial_loads = np.random.uniform(ind_load_range[0], ind_load_range[1], r)
@@ -115,7 +120,7 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
     if scenario[0] == 'A':  # active  only
         loads_angles = np.zeros(n)
     elif scenario[0] == 'F':  # full: active and reactive
-        loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n) * load_theta_range[0]
+        loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n)
 
     if scenario[1] == 'C':  # correlated demand/utility
         utilities = loads_S ** 2
@@ -125,7 +130,10 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
         utilities[0:r] = np.array([util_func(ind_load_range[1]) for i in range(r)])
         utilities[r:n] = np.array([util_func(cus_load_range[1]) for i in range(n - r)])
 
-    ins.loads_S = loads_S / T.graph['S_base']
+    if per_unit:
+        ins.loads_S = loads_S / T.graph['S_base']
+    else:
+        ins.loads_S = loads_S
     ins.loads_angles = loads_angles
     ins.loads_utilities = utilities
     ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
@@ -142,6 +150,9 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
 # loss C_ or L flags for T are not set
 def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base=5000000, V_base=4160, visualize=False,
                      loss_ratio=0.0):
+    if filename=='test-feeders/13-node.csv' or filename=='test-feeders/13-node-per-unit.csv':
+        S_base = 8000000
+        V_base = 11000
     # T = nx.Graph()
     T = nx.DiGraph()
     T.graph["S_base"] = S_base

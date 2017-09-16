@@ -1,0 +1,16 @@
+# from A Sufficient Condition on Convex Relaxation of AC Optimal Power Flow in Distribution Networks, 2017
+# base voltage = 11000 V,base Capacity = 8000000 VA, base impedence = 15.125 ohm. Root is 0 (converted from 650, a convention we use in our code)
+Node A,Node B,r (p.u.),x (p.u.),C (p.u.)
+0 , 1 , 0.176,  0.52,   8000000
+1 , 2 , 0.4  ,  2.4 ,   1000000
+1 , 3 , 0.22 ,  0.66,   6100000
+3 , 4 , 0.4  ,  2.4 ,   2000000
+3 , 5 , 0.264,  0.64,   6000000
+5 , 6 , 0.4  ,  2.4 ,   2000000
+5 , 7 , 0.176,  0.56,   6000000
+7 , 8 , 0.4  ,  2.6 ,   2000000
+7 , 9 , 0.48 ,  2.8 ,   2000000
+7 , 10, 0.22 ,  0.6 ,   6000000
+10, 11, 0.2  ,  2.44,   2000000
+10, 12, 0.44 ,  2.8 ,   2000000
+
