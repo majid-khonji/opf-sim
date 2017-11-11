@@ -44,7 +44,9 @@ def PTAS(ins, guess_set_size=1, use_LP=True):
 # some nasty tricks: if solve_remaining fails, we take loss from the fractional solution (its a bound, right?)
 def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
     T = ins.topology
+    t1 = time.time()
     sol = min_OPF_OPT(ins, guess_x=guess_x, fractional=True)
+    sol.frac_comp_count = 0
     if sol.succeed:
         if use_LP:
             # print 'calling lp'
@@ -59,6 +61,7 @@ def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
         for k in ins.I:
             if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
                 sol.x[k] = 0
+                sol.frac_comp_count += 1
                 # print "%d rounded from %f"%(k,sol.x[k])
             # elif sol.x[k] < ins.rounding_tolerance:
             #     sol.x[k] = 0
@@ -76,6 +79,10 @@ def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
             sol2.x = sol.x
             sol2.succeed = True
         sol2.obj = obj
+        sol2.frac_comp_count = sol.frac_comp_count
+        sol2.frac_comp_percentage = sol2.frac_comp_count/(ins.n*1.)*100
+
+        sol2.running_time = time.time() - t1
         return sol2
     else:
         return sol

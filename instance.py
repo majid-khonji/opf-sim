@@ -38,8 +38,16 @@ class OPF_instance(object):
         self.customer_path_nodes = {}  # path of customer k
         self.customer_leaf_path_nodes = {}  # path of customer k
         self.leaf_nodes = {}  # leaf nodes
-        self.cons = ''
+        self.cons = '' # means both: voltage and capacity
         self.gen_cost = 1
+        self.drop_l_terms = False
+
+        # terms use for scheduling demands
+        self.scheduling_horizon = 24
+        self.loads_at_time = {}
+        self.loads_time_length={}
+        self.loads_time_path = {}
+
         ### some settings (maybe we should use a different structure in future)
         self.rounding_tolerance = 0.00001
         self.infeas_tolerance = 0.00001
@@ -59,6 +67,7 @@ class OPF_sol(object):
         self.v = {}
         self.P_0 = 0 #real power from the root
         self.frac_comp_count = 0
+        self.frac_comp_percentage = 0
         self.succeed = False
         self.gurobi_model= None
 
@@ -144,6 +153,98 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
     _distribute_customers(ins, capacity_flag=capacity_flag)
 
     return ins
+
+#sheduling instance
+def sim_sch_instance(scenario="FCM", time_steps=24,capacity=2, F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
+                 n=10,per_unit=True, voltage_deviation_percentage=5,
+                 cus_load_range=(500, 5000), capacity_flag='C_',
+                 ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
+                 v_min=0.81000, cons='', gen_cost=.01):
+
+    ins = OPF_instance()
+    ins.scheduling_horizon = time_steps
+    T = nx.path_graph(time_steps)
+    ins.topology = T
+
+    nx.set_edge_attributes(T, 'C', {k: capacity for k in
+                                    T.edges()})  # VA capacity
+    nx.set_edge_attributes(T, 'z',
+                           {k: 1 for k in
+                            T.edges()})  # impedence [complex
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers whos demands pass through edge e
+
+    for k in T.nodes():
+        T.node[k]['N'] = []  # customers on node i
+        T.node[k]['v'] = 0  # voltage
+    T.node[0]['v'] = ins.v_0
+
+    assert (scenario[0] in ['F', 'A'] and scenario[1] in ['C', 'U', '1'] and scenario[2] in ['R', 'I', 'M'])
+    # initialize
+    for i in T.nodes():
+        T.node[i]['N'] = []  # customers on node i
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
+
+    ins.cons = cons
+    ins.gen_cost = gen_cost
+    T.node[0]['v'] = ins.v_0
+    ins.n = n
+    ins.leaf_nodes = T.graph['leaf_nodes']
+    ins.leaf_edges = T.graph['leaf_edges']
+    ins.F = np.random.choice(n, int(round(F_percentage * n)), replace=False)
+    ins.I = np.setdiff1d(np.arange(n), ins.F)
+    if per_unit:
+        ins.v_0 = v_0
+        ins.v_max = v_max
+        ins.v_min = v_min
+    else:
+        ins.v_0 = T.graph['V_base']**2 # remember |V|^2 = v
+        ins.v_max = ins.v_0*(1+voltage_deviation_percentage/100.)
+        ins.v_min = ins.v_0*(1-voltage_deviation_percentage/100.)
+    ins.V_ = (v_0 - v_min) / 2
+    loads_S = None
+    loads_angles = None
+    utilities = None
+
+    r = 0  # index at which non industrial customer start until n
+
+    if scenario[2] == 'R':  # commercial customers
+        loads_S = np.random.uniform(cus_load_range[0], cus_load_range[1], n)
+    elif scenario[2] == 'I':  # industrial
+        loads_S = np.random.uniform(ind_load_range[0], ind_load_range[1], n)
+    elif scenario[2] == 'M':  # mixed
+        r = np.random.randint(0, round(industrial_cus_max_percentage * n))
+        industrial_loads = np.random.uniform(ind_load_range[0], ind_load_range[1], r)
+        customer_loads = np.random.uniform(cus_load_range[0], cus_load_range[1], n - r)
+        loads_S = np.append(industrial_loads, customer_loads)
+
+    if scenario[0] == 'A':  # active  only
+        loads_angles = np.zeros(n)
+    elif scenario[0] == 'F':  # full: active and reactive
+        loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n)
+
+    if scenario[1] == 'C':  # correlated demand/utility
+        utilities = loads_S ** 2
+    elif scenario[1] == 'U':  # uncorrelated
+        util_func = lambda x: random.randrange(0, x)
+        utilities = np.zeros(n)
+        utilities[0:r] = np.array([util_func(ind_load_range[1]) for i in range(r)])
+        utilities[r:n] = np.array([util_func(cus_load_range[1]) for i in range(n - r)])
+
+    if per_unit:
+        ins.loads_S = loads_S / T.graph['S_base']
+    else:
+        ins.loads_S = loads_S
+    ins.loads_angles = loads_angles
+    ins.loads_utilities = utilities
+    ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
+    ins.loads_Q = np.array(map(lambda x, t: x * np.math.sin(t), ins.loads_S, ins.loads_angles))
+
+    # print "angles ", loads_angles
+    # print "util  ", utilities
+    _distribute_customers_over_time(ins)
+
+    return ins
+
 
 
 # returns T  of type nx.Graph()
@@ -478,6 +579,27 @@ def _distribute_customers(ins, capacity_flag='C_'):
             for e in ins.customer_leaf_path[(k, l)]:
                 ins.Q[(k, l)] += T[e[0]][e[1]]['z'][0] * ins.loads_P[k] + T[e[0]][e[1]]['z'][1] * ins.loads_Q[k]
 
+# topology must be filled in instance ins
+def _distribute_customers_over_time(ins):
+    T = ins.topology
+    n = ins.n
+    for k in range(n):
+        attached_node = np.random.choice(ins.scheduling_horizon-1)
+        # print k,':', attached_node
+        ins.loads_at_time[k] = attached_node
+
+        length = np.random.choice(np.arange(1, ins.scheduling_horizon-attached_node))
+        # print '  length ', length
+        loads_time_path_nodes = np.arange(attached_node, attached_node + length +1 )
+        # print '  ', loads_time_path_nodes
+
+
+
+        ins.loads_time_length[k] = len(loads_time_path_nodes)
+        ins.loads_time_path[k]= zip(loads_time_path_nodes, loads_time_path_nodes[1:])
+        for e in ins.loads_time_path[k]: T[e[0]][e[1]]['K'].append(k)
+
+
 # with debugging  options
 def _slow_distribute_customers(ins, capacity_flag='C_'):
     T = ins.topology
@@ -654,17 +776,23 @@ def rnd_tree_instance(n=3, depth=2, branch=2, v_0=1, v_max=1.21, v_min=0.81000, 
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
+    # logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
     # ins = rnd_tree_instance()
     # ins = single_link_instance()
-    # print_instance(ins)
     # ins = rnd_path_instance()
     # logging.debug("Q: %s"%str(ins.Q) )
     # print ins.topology.edges()
     # print ins.topology.node[0]
     # plt.show()
 
-    T = network_38node()
-    # ins = rnd_instance_from_graph()
-    ins = sim_instance(T, scenario="FUI", n=1, ind_load_range=(1000000, 4000000))
+    # ins = sim_instance(T, scenario="FUI", n=1, ind_load_range=(1000000, 4000000))
+    T = nx.path_graph(4)
+    nx.set_edge_attributes(T,'K', {k:[] for k in T.edges()})
+    nx.set_node_attributes(T,'N',{k:[] for k in T.nodes()})
+    ins = OPF_instance()
+    ins.topology = T
+    ins.scheduling_horizon = 4
+    ins.n = 10
+    _distribute_customers_over_time(ins)
+    # import util as u
     # u.print_instance(ins)

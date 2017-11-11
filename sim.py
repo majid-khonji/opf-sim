@@ -12,7 +12,7 @@ import logging
 
 
 # topology = [13 | 123]
-def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=False,
+def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=100, reps=40, dry_run=False,
             dump_dir="results/dump/", topology=123):
     name = "TPS:[%s]__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
         scenario, topology, F_percentage, max_n, step_n, start_n, reps)
@@ -28,12 +28,16 @@ def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=10
 
     round_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     round_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_OPF_frac_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_OPF_frac_percentage = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     round_OPF_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     round_OPF_ar2= np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
     no_LP_round_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     no_LP_round_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     no_LP_round_OPF_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    no_LP_round_OPF_frac_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    no_LP_round_OPF_frac_percentage = np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
     frac_OPF_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     frac_OPF_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
@@ -88,7 +92,7 @@ def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=10
                 sol_frac = oo.min_OPF_OPT(ins, fractional=True)
                 # some times the fractional is not well-rounded
                 if sol_frac > sol_opt:
-                    sol_frac = sol_opt
+                    sol_frac.obj = sol_opt.obj
                 sol_frac.ar = sol_frac.obj / sol_opt.obj
                 print "frac_OPF obj:         %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
                     sol_frac.obj, sol_frac.running_time, sol_frac.ar)
@@ -112,6 +116,9 @@ def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=10
                 round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol_round.running_time
                 round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
                 round_OPF_ar2[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar2
+                round_OPF_frac_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_comp_count
+                round_OPF_frac_percentage[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_comp_percentage
+
                 ##############
 
                 ### no LP round_OPF
@@ -123,6 +130,8 @@ def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=10
                 no_LP_round_OPF_obj[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.obj
                 no_LP_round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.running_time
                 no_LP_round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.ar
+                no_LP_round_OPF_frac_count[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.frac_comp_count
+                no_LP_round_OPF_frac_percentage[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.frac_comp_percentage
                 ##############
 
                 if sol_opt.succeed == False or sol_round.succeed == False or sol_no_LP.succeed == False or sol_frac == False or sol_round.obj < sol_frac.obj:
@@ -153,9 +162,13 @@ def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=10
                      round_OPF_ar=round_OPF_ar,
                      round_OPF_ar2=round_OPF_ar2,
                      round_OPF_time=round_OPF_time,
+                     round_OPF_frac_count=round_OPF_frac_count,
+                     round_OPF_frac_percentage=round_OPF_frac_percentage,
                      no_LP_round_OPF_obj=no_LP_round_OPF_obj,
                      no_LP_round_OPF_ar=no_LP_round_OPF_ar,
                      no_LP_round_OPF_time=no_LP_round_OPF_time,
+                     no_LP_round_OPF_frac_count=no_LP_round_OPF_frac_count,
+                     no_LP_round_OPF_frac_percentage=no_LP_round_OPF_frac_percentage,
                      frac_OPF_obj=frac_OPF_obj,
                      frac_OPF_ar=frac_OPF_ar,
                      frac_OPF_time=frac_OPF_time,
@@ -168,10 +181,14 @@ def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=10
     mean_yerr_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_ar)), 1)
     mean_yerr_round_OPF_ar2 = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_ar2)), 1)
     mean_yerr_round_OPF_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_time)), 1)
+    mean_yerr_round_OPF_frac_count = np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_frac_count)), 1)
+    mean_yerr_round_OPF_frac_percentage= np.append(x, np.array(map(lambda y: u.mean_yerr(y), round_OPF_frac_percentage)), 1)
 
     mean_yerr_no_LP_round_OPF_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_obj)), 1)
     mean_yerr_no_LP_round_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_ar)), 1)
     mean_yerr_no_LP_round_OPF_time = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_time)), 1)
+    mean_yerr_no_LP_round_OPF_frac_count = np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_frac_count)), 1)
+    mean_yerr_no_LP_round_OPF_frac_percentage= np.append(x, np.array(map(lambda y: u.mean_yerr(y), no_LP_round_OPF_frac_percentage)), 1)
 
     mean_yerr_frac_OPF_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), frac_OPF_obj)), 1)
     mean_yerr_frac_OPF_ar = np.append(x, np.array(map(lambda y: u.mean_yerr(y), frac_OPF_ar)), 1)
@@ -190,18 +207,29 @@ def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=10
                  round_OPF_ar=round_OPF_ar,
                  round_OPF_ar2=round_OPF_ar2,
                  round_OPF_time=round_OPF_time,
+                 round_OPF_frac_count=round_OPF_frac_count,
+                 round_OPF_frac_percentage=round_OPF_frac_percentage,
                  no_LP_round_OPF_obj=no_LP_round_OPF_obj,
                  no_LP_round_OPF_ar=no_LP_round_OPF_ar,
                  no_LP_round_OPF_time=no_LP_round_OPF_time,
+                 no_LP_round_OPF_frac_count=no_LP_round_OPF_frac_count,
+                 no_LP_round_OPF_frac_percentage=no_LP_round_OPF_frac_percentage,
                  OPT_obj=OPT_obj,
                  OPT_time=OPT_time,
+                 frac_OPF_obj=frac_OPF_obj,
+                 frac_OPF_ar=frac_OPF_ar,
+                 frac_OPF_time=frac_OPF_time,
                  mean_yerr_round_OPF_obj=mean_yerr_round_OPF_obj,
                  mean_yerr_round_OPF_ar=mean_yerr_round_OPF_ar,
                  mean_yerr_round_OPF_ar2=mean_yerr_round_OPF_ar2,
                  mean_yerr_round_OPF_time=mean_yerr_round_OPF_time,
+                 mean_yerr_round_OPF_frac_count=mean_yerr_round_OPF_frac_count,
+                 mean_yerr_round_OPF_frac_percentage=mean_yerr_round_OPF_frac_percentage,
                  mean_yerr_no_LP_round_OPF_obj=mean_yerr_no_LP_round_OPF_obj,
                  mean_yerr_no_LP_round_OPF_ar=mean_yerr_no_LP_round_OPF_ar,
                  mean_yerr_no_LP_round_OPF_time=mean_yerr_no_LP_round_OPF_time,
+                 mean_yerr_no_LP_round_OPF_frac_count=mean_yerr_no_LP_round_OPF_frac_count,
+                 mean_yerr_no_LP_round_OPF_frac_percentage=mean_yerr_no_LP_round_OPF_frac_percentage,
                  mean_yerr_frac_OPF_obj=mean_yerr_frac_OPF_obj,
                  mean_yerr_frac_OPF_ar=mean_yerr_frac_OPF_ar,
                  mean_yerr_frac_OPF_time=mean_yerr_frac_OPF_time,

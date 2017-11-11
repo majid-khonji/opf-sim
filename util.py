@@ -168,7 +168,7 @@ def obj_min_loss_penalty(ins, sol, output='obj'):
         return loss
     if output =='penalty':
         return penalty
-def mean_yerr(a, c=0.95):
+def mean_yerr(a, c=0.950):
     n = len(a)
     m, se = np.mean(a), stats.sem(a)
     yerr = se * stats.t.ppf((1 + c) / 2., n - 1)
