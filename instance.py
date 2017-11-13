@@ -48,6 +48,9 @@ class OPF_instance(object):
         self.loads_time_length={}
         self.loads_time_path = {}
 
+        # objective function
+        self.util_max_objective = False
+
         ### some settings (maybe we should use a different structure in future)
         self.rounding_tolerance = 0.00001
         self.infeas_tolerance = 0.00001
@@ -155,28 +158,30 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
     return ins
 
 #sheduling instance
-def sim_sch_instance(scenario="FCM", time_steps=24,capacity=2, F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
-                 n=10,per_unit=True, voltage_deviation_percentage=5,
+def sim_sch_instance(scenario="FCM", time_steps=24,capacity=2000000, F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
+                 n=10,per_unit=False, voltage_deviation_percentage=5,
                  cus_load_range=(500, 5000), capacity_flag='C_',
                  ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
                  v_min=0.81000, cons='', gen_cost=.01):
 
     ins = OPF_instance()
+    ins.drop_l_terms = True
+    ins.util_max_objective = True
     ins.scheduling_horizon = time_steps
     T = nx.path_graph(time_steps)
     ins.topology = T
 
     nx.set_edge_attributes(T, 'C', {k: capacity for k in
                                     T.edges()})  # VA capacity
-    nx.set_edge_attributes(T, 'z',
-                           {k: 1 for k in
-                            T.edges()})  # impedence [complex
+    # nx.set_edge_attributes(T, 'z',
+    #                        {k: 1 for k in
+    #                         T.edges()})  # impedence [complex
     nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers whos demands pass through edge e
 
     for k in T.nodes():
         T.node[k]['N'] = []  # customers on node i
-        T.node[k]['v'] = 0  # voltage
-    T.node[0]['v'] = ins.v_0
+        # T.node[k]['v'] = 0  # voltage
+    # T.node[0]['v'] = ins.v_0
 
     assert (scenario[0] in ['F', 'A'] and scenario[1] in ['C', 'U', '1'] and scenario[2] in ['R', 'I', 'M'])
     # initialize
@@ -188,19 +193,12 @@ def sim_sch_instance(scenario="FCM", time_steps=24,capacity=2, F_percentage=0.0,
     ins.gen_cost = gen_cost
     T.node[0]['v'] = ins.v_0
     ins.n = n
-    ins.leaf_nodes = T.graph['leaf_nodes']
-    ins.leaf_edges = T.graph['leaf_edges']
+    # ins.leaf_nodes = T.graph['leaf_nodes']
+    # ins.leaf_edges = T.graph['leaf_edges']
     ins.F = np.random.choice(n, int(round(F_percentage * n)), replace=False)
     ins.I = np.setdiff1d(np.arange(n), ins.F)
-    if per_unit:
-        ins.v_0 = v_0
-        ins.v_max = v_max
-        ins.v_min = v_min
-    else:
-        ins.v_0 = T.graph['V_base']**2 # remember |V|^2 = v
-        ins.v_max = ins.v_0*(1+voltage_deviation_percentage/100.)
-        ins.v_min = ins.v_0*(1-voltage_deviation_percentage/100.)
-    ins.V_ = (v_0 - v_min) / 2
+    # ins.V_ = (v_0 - v_min) / 2
+
     loads_S = None
     loads_angles = None
     utilities = None
@@ -595,8 +593,8 @@ def _distribute_customers_over_time(ins):
 
 
 
-        ins.loads_time_length[k] = len(loads_time_path_nodes)
         ins.loads_time_path[k]= zip(loads_time_path_nodes, loads_time_path_nodes[1:])
+        ins.loads_time_length[k] = len(ins.loads_time_path[k])
         for e in ins.loads_time_path[k]: T[e[0]][e[1]]['K'].append(k)
 
 
@@ -786,13 +784,14 @@ if __name__ == "__main__":
     # plt.show()
 
     # ins = sim_instance(T, scenario="FUI", n=1, ind_load_range=(1000000, 4000000))
-    T = nx.path_graph(4)
+    T = nx.path_graph(24)
     nx.set_edge_attributes(T,'K', {k:[] for k in T.edges()})
     nx.set_node_attributes(T,'N',{k:[] for k in T.nodes()})
     ins = OPF_instance()
     ins.topology = T
-    ins.scheduling_horizon = 4
-    ins.n = 10
+    ins.scheduling_horizon = 24
+    ins.n = 1000
     _distribute_customers_over_time(ins)
+    print ins.loads_time_path
     # import util as u
     # u.print_instance(ins)

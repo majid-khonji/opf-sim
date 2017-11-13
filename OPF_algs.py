@@ -45,7 +45,11 @@ def PTAS(ins, guess_set_size=1, use_LP=True):
 def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
     T = ins.topology
     t1 = time.time()
-    sol = min_OPF_OPT(ins, guess_x=guess_x, fractional=True)
+    sol = None
+    if not ins.util_max_objective:
+        sol = min_OPF_OPT(ins, guess_x=guess_x, fractional=True)
+    elif ins.util_max_objective and ins.drop_l_terms:
+        sol = max_sOPF_OPT(ins, guess_x=guess_x, fractional=True)
     sol.frac_comp_count = 0
     if sol.succeed:
         if use_LP:
@@ -55,37 +59,48 @@ def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
             if sol_lp.succeed:
                 for k in customers:
                     sol.x[k] = sol_lp.x[k]
-            else:
-                sol.succeed = False
-                return sol
-        for k in ins.I:
-            if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
-                sol.x[k] = 0
-                sol.frac_comp_count += 1
+
+                for k in customers:
+                    if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
+                        sol.x[k] = 0
+                        sol.frac_comp_count += 1
                 # print "%d rounded from %f"%(k,sol.x[k])
             # elif sol.x[k] < ins.rounding_tolerance:
             #     sol.x[k] = 0
             # elif sol.x[k] > 1 - ins.rounding_tolerance:
             #     sol.x[k] = 1
+                if ins.util_max_objective:
+                    obj = 0
+                    for k in range(ins.n):
+                        obj += sol.x[k] * ins.loads_utilities[k]
+                    sol.obj = obj
+                    sol.frac_comp_percentage = sol.frac_comp_count/(ins.n*1.)*100
+                    sol.running_time = time.time() - t1
+                    return sol
 
-        obj = 1
-        for k in range(ins.n):
-            obj += (1 - sol.x[k]) * ins.loads_utilities[k]
-        sol2 = _solve_remaining(ins, guess_x=sol.x)
-        if sol2.succeed:
-            obj += T.graph['S_base'] * sol2.obj
+                else:
+                    obj = 1
+                    for k in range(ins.n):
+                        obj += (1 - sol.x[k]) * ins.loads_utilities[k]
+                    if not ins.drop_l_terms:
+                        sol2 = _solve_remaining(ins, guess_x=sol.x)
+                        if sol2.succeed:
+                            obj += T.graph['S_base'] * sol2.obj
+                        else:
+                            obj += T.graph['S_base'] * u.obj_min_loss_penalty(ins,sol,output='loss')
+                            sol2.x = sol.x
+                            sol2.succeed = True
+                        sol2.obj = obj
+                        sol2.frac_comp_count = sol.frac_comp_count
+                        sol2.frac_comp_percentage = sol2.frac_comp_count/(ins.n*1.)*100
+
+                        sol2.running_time = time.time() - t1
+                        return sol2
+            else:
+                sol.succeed = False
+                return sol
         else:
-            obj += T.graph['S_base'] * u.obj_min_loss_penalty(ins,sol,output='loss')
-            sol2.x = sol.x
-            sol2.succeed = True
-        sol2.obj = obj
-        sol2.frac_comp_count = sol.frac_comp_count
-        sol2.frac_comp_percentage = sol2.frac_comp_count/(ins.n*1.)*100
-
-        sol2.running_time = time.time() - t1
-        return sol2
-    else:
-        return sol
+            return sol
 
 
 def _LP(ins, sol, customers=[], alg='lp'):
@@ -97,8 +112,13 @@ def _LP(ins, sol, customers=[], alg='lp'):
     x = {}
     for k in customers: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
 
-    obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in customers)
-    m.setObjective(obj, gbp.GRB.MINIMIZE)
+
+    if ins.util_max_objective:
+        obj = gbp.quicksum(x[k] * ins.loads_utilities[k] for k in customers)
+        m.setObjective(obj, gbp.GRB.MAXIMIZE)
+    else:
+        obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in customers)
+        m.setObjective(obj, gbp.GRB.MINIMIZE)
 
     if ins.cons == '' or ins.cons == 'C':
         for e in T.edges():
@@ -114,7 +134,7 @@ def _LP(ins, sol, customers=[], alg='lp'):
             C_Q = np.sum([sol.x[k] * ins.loads_Q[k] for k in edge_customers])
             lhs_Q = gbp.quicksum([x[k] * ins.loads_Q[k] for k in edge_customers])
             m.addConstr(lhs_Q, gbp.GRB.LESS_EQUAL, C_Q , "Cq_%s" % str(e))
-    if ins.cons == '' or ins.cons == 'V':
+    if not ins.drop_l_terms and (ins.cons == '' or ins.cons == 'V'):
         for l in ins.leaf_nodes:
             C_V = np.sum([ins.Q[(k, l)] * sol.x[k] for k in customers])
             lhs_V = gbp.quicksum([ins.Q[(k, l)] * x[k] for k in customers])
@@ -229,6 +249,75 @@ def _solve_remaining(ins, guess_x={}, alg="solve_remaining"):
 
     return sol
 
+# for FnT 2017
+# No l terms and no voltage
+def max_sOPF_OPT(ins, guess_x={}, fractional=False, debug=False,tolerance=0.001, alg="min_OPF_OPT"):
+    assert(ins.cons == '' or ins.cons == 'V' or ins.cons == 'C' )
+    t1 = time.time()
+    T = ins.topology
+    m = gbp.Model("max_sOPF_OPT")
+
+    u.gurobi_setting(m)
+    x = {}
+    P = {}
+    Q = {}
+    if fractional:
+        for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
+    else:
+        for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % k)
+
+    for k in ins.F: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
+    for e in T.edges():
+        P[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(e))
+        Q[e] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="Q_%s" % str(e))
+
+
+    obj = gbp.quicksum(x[k] * ins.loads_utilities[k] for k in range(ins.n))
+    m.setObjective(obj, gbp.GRB.MAXIMIZE)
+
+    for e in T.edges():
+        rhs_P = gbp.quicksum([x[k] * ins.loads_P[k] for k in T[e[0]][e[1]]['K']])
+        m.addConstr(P[e], gbp.GRB.EQUAL, rhs_P, "P_%s" % str(e))
+
+        rhs_Q = gbp.quicksum([x[k] * ins.loads_Q[k] for k in T[e[0]][e[1]]['K']])
+
+        m.addConstr(Q[e], gbp.GRB.EQUAL, rhs_Q, "Q_%s" % str(e))
+
+
+
+        m.addQConstr(P[e] * P[e] + Q[e] * Q[e], gbp.GRB.LESS_EQUAL, T[e[0]][e[1]]['C'] ** 2,
+                         "C_%s" % str(e))  # capacity constraint
+
+    for i in ins.F:
+        m.addConstr(x[i] <= 1, "x[%d]: ub")
+        # m.addConstr(x[i] >= 0, "x[%d]: lb")
+    if fractional:
+        for i in ins.I:
+            m.addConstr(x[i] <= 1, "x[%d]: ub")
+            # m.addConstr(x[i] >= 0, "x[%d]: lb")
+    for k in guess_x.keys():
+        m.addConstr(x[k], gbp.GRB.EQUAL, guess_x[k], "x[%d]: guess " % k)
+
+    m.update()
+    #m.write('model.lp')
+    m.optimize()
+
+    sol = a.OPF_sol()
+    sol.running_time = time.time() - t1
+    sol.gurobi_model = m
+
+    if u.gurobi_handle_errors(m, algname=alg):
+        sol.x = {k: x[k].x for k in range(ins.n)}
+        sol.obj = obj.getValue()
+        sol.P = P
+        sol.Q = Q
+        first_node = T.edge[0].keys()[0]
+        sol.P_0 = P[(0, first_node)].X
+        sol.succeed = True
+    else:
+        sol.succeed = False
+
+    return sol
 
 # for TPS 2017
 # it has some quick and dirty tricks to make l tight

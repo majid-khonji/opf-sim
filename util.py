@@ -70,7 +70,7 @@ def print_instance(ins, detailed=True):
     print(' Q(k,l):     %s' % str({i[0]: round(i[1], 3) for i in ins.Q.iteritems()}))
     print "-- cons: "
     print(' C : %s' % {e: round(ins.topology[e[0]][e[1]]['C'], 3) for e in ins.topology.edges()})
-    print(' C_: %s' % {e: round(ins.topology[e[0]][e[1]]['C_'], 3) for e in ins.topology.edges()})
+    # print(' C_: %s' % {e: round(ins.topology[e[0]][e[1]]['C_'], 3) for e in ins.topology.edges()})
     print(
         ' z : %s' % {e: (round(ins.topology[e[0]][e[1]]['z'][0], 3), round(ins.topology[e[0]][e[1]]['z'][1], 3)) for e
                      in
