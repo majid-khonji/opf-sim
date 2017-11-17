@@ -109,25 +109,25 @@ def plot_subfig_obj(name, ax, dump_dir):
     OPT_obj = np.maximum(OPT_s_obj, OPT_obj)
     x = np.arange(100, 1500 + 1, 100)
     x = x.reshape((len(x), 1))
-    mean_yerr_greedy_obj = f['mean_yerr_greedy_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_obj)), 1)
+    mean_yerr_greedy_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), greedy_obj)), 1)
     mean_yerr_OPT_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_obj)), 1)
-    mean_yerr_OPT_s_obj = f['mean_yerr_OPT_s_obj']#np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_obj)), 1)
+    mean_yerr_OPT_s_obj = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_obj)), 1)
 
     ax.errorbar(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1],
-                yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="Alg.3",
-            linewidth=2,
-            linestyle='-.')
-
-    ax.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], yerr=mean_yerr_OPT_obj[:, 2], color='red',
-                linestyle='None')
-    ax.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label=r'OPT', linewidth=2)
+                yerr=mean_yerr_greedy_obj[:, 2], linestyle='None', color='blue',capsize=2,elinewidth=.8)
+    ax.plot(mean_yerr_greedy_obj[:, 0], mean_yerr_greedy_obj[:, 1], color='blue', marker='.', label="GreedyOPF",
+            linewidth=2)
 
 
     ax.errorbar(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1],
-                yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green')
+                yerr=mean_yerr_OPT_s_obj[:, 2], linestyle='None', color='green',capsize=2,elinewidth=.8)
     ax.plot(mean_yerr_OPT_s_obj[:, 0], mean_yerr_OPT_s_obj[:, 1], color='green', label=r"OPT$_{\rm S}$",
-            linewidth=2, linestyle='--')
+            linewidth=2)
+
+    ax.errorbar(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], yerr=mean_yerr_OPT_obj[:, 2], color='red',
+                linestyle='None',capsize=2,elinewidth=.8)
+    ax.plot(mean_yerr_OPT_obj[:, 0], mean_yerr_OPT_obj[:, 1], color='red', label=r'OPT', linewidth=2)
+
     ax.grid(True)
     # ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
     _format_exponent(ax, 'y')
@@ -209,7 +209,7 @@ def plot_subfig_ar(name, ax, dump_dir, ar_type='opt(s)'):
     # ar = map(lambda n:1./(2*np.log2(n) + 1)  ,mean_yerr_greedy_75[:, 0])
     ax.plot(mean_yerr_greedy_75[:, 0], ar, color='black',
             linewidth=2, linestyle='-.')
-    ax.text(568, .15, r'Theoretical', fontsize=13)
+    ax.text(568, .12, r'Theoretical', fontsize=13)
 
     print ar
 
@@ -231,7 +231,7 @@ def plot_subfig_time(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1],
                 yerr=mean_yerr_greedy_time[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1], color='blue', marker='.', label="Alg.2",
+    ax.plot(mean_yerr_greedy_time[:, 0], mean_yerr_greedy_time[:, 1], color='blue', marker='.', label=r'GreedyDisDem',
             linewidth=2,
             linestyle='-.')
 
@@ -239,7 +239,7 @@ def plot_subfig_time(name, ax, dump_dir):
 
     ax.errorbar(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], yerr=mean_yerr_OPT_time[:, 2], color='red',
                 linestyle='None')
-    ax.plot(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], color='red', label=r'OPT', linewidth=2)
+    ax.plot(mean_yerr_OPT_time[:, 0], mean_yerr_OPT_time[:, 1], color='red', label=r'Numerical (Gurobi)', linewidth=2)
 
 
     # c.errorbar(mean_yerr_OPT_s_time[:, 0], mean_yerr_OPT_s_time[:, 1],
@@ -279,14 +279,14 @@ def plot_subfig_loss(name, ax, dump_dir):
     mean_yerr_OPT_s_loss = np.append(x, np.array(map(lambda y: u.mean_yerr(y), OPT_s_loss)), 1)
 
     ax.errorbar(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1],
-                yerr=mean_yerr_greedy_loss[:, 2], linestyle='None', color='blue')
-    ax.plot(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1], color='blue', marker='.', label="Alg.3",
+                yerr=mean_yerr_greedy_loss[:, 2], linestyle='None', color='blue',capsize=2,elinewidth=.8)
+    ax.plot(mean_yerr_greedy_loss[:, 0], mean_yerr_greedy_loss[:, 1], color='blue', marker='.', label="GreedyOPF",
             linewidth=2,
             linestyle='-')
 
 
     ax.errorbar(mean_yerr_OPT_s_loss[:, 0], mean_yerr_OPT_s_loss[:, 1],
-                yerr=mean_yerr_OPT_s_loss[:, 2], linestyle='None', color='green')
+                yerr=mean_yerr_OPT_s_loss[:, 2], linestyle='None', color='green',capsize=2,elinewidth=.8)
     ax.plot(mean_yerr_OPT_s_loss[:, 0], mean_yerr_OPT_s_loss[:, 1], color='green', label=r"OPT$_{\rm S}$",
             linewidth=2, linestyle='-')
     ax.grid(True)
@@ -297,7 +297,7 @@ def plot_subfig_loss(name, ax, dump_dir):
         tick.set_rotation(30)
     ax.set_xlim([100, 1500])
     ax.set_ylim([0, 4])
-def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
+def plot_all_obj(dump_dir="results/dump/",network=123, fig_dir="results/"):
     """
     :param dump_dir:
     :param fig_dir:
@@ -305,22 +305,24 @@ def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
     """
     plt.ioff()
     # plt.clf()
-    FCR_name = "sim-123-opts-little-bit-large/adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FCM_name = "sim-123-opts-little-bit-large/adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FUR_name = "sim-123-opts-little-bit-large/adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FUM_name = "sim-123-opts-little-bit-large/adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    # FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    # FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
-    # FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    # FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+    if network == 123:
+        FCR_name = "sim-123-opts-little-bit-large/adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FCM_name = "sim-123-opts-little-bit-large/adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FUR_name = "sim-123-opts-little-bit-large/adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FUM_name = "sim-123-opts-little-bit-large/adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    else:
+        FCR_name = "adapt__FCR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40"
+        FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+        FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
 
     # fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', sharey='row')
-    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
+    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7.2, 4))
 
     plot_subfig_obj(name=FCR_name, ax=fcr, dump_dir=dump_dir)
     fcr.set_title('CR')
 
-    fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+    fcr.legend(bbox_to_anchor=(0.4, 1.18, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
     plot_subfig_obj(name=FCM_name, ax=fcm, dump_dir=dump_dir)
     fcm.set_title('CM')
@@ -337,11 +339,14 @@ def plot_all_obj(dump_dir="results/dump/", fig_dir="results/"):
 
     fig.text(0.00, 0.5, 'Objective value', ha='center', va='center', rotation='vertical', fontsize=14)
 
-    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
-    plt.savefig(fig_dir + "obj_123_adapt.pdf", bbox_inches='tight')
+    plt.tight_layout(pad=1, w_pad=.2, h_pad=0.2)
+    if network == 123:
+        plt.savefig(fig_dir + "FnT_TCNS_obj_123.pdf", bbox_inches='tight')
+    else:
+        plt.savefig(fig_dir + "FnT_TCNS_obj_38.pdf", bbox_inches='tight')
 
 
-def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt"):
+def plot_all_ar(dump_dir="results/dump/", network=123, fig_dir="results/", ar_type="opt"):
     """
     :param dump_dir:
     :param fig_dir:
@@ -350,45 +355,51 @@ def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt"):
     """
     plt.ioff()
     # plt.clf()
-    FCR_name = ["adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FCR__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FCR__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FCR__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
-    FCM_name = ["adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FCM__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FCM__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FCM__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
-    FUR_name = ["adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FUR__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FUR__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FUR__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
-    FUM_name = ["sim-123-opts-little-bit-large/adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FUM__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FUM__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
-                "adapt__FUM__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
-    # FCR_name = ["adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
-    #             "adapt__FCR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
-    #             "adapt__FCR_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
-    #             "adapt__FCR_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
-    # FCM_name = ["adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100",
-    #             "adapt__FCM_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=100",
-    #             "adapt__FCM_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=100",
-    #             "adapt__FCM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=100"] ###### FIX THIS GUY ####
-    # FUR_name = ["adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
-    #             "adapt__FUR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
-    #             "adapt__FUR_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
-    #             "adapt__FUR_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
-    # FUM_name = ["adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100",
-    #             "adapt__FUM_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=100",
-    #             "adapt__FUM_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=100",
-    #             "adapt__FUM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=100"]
 
-    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 5))
+    if network == 123:
+        FCR_name = ["adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCR__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCR__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCR__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+        FCM_name = ["adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCM__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCM__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCM__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+        FUR_name = ["adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUR__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUR__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUR__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+        FUM_name = ["sim-123-opts-little-bit-large/adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUM__topology=123__F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUM__topology=123__F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUM__topology=123__F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+    elif network==38:
+        FCR_name = ["adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCR_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FCR_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+        FCM_name = ["adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100",
+                    "adapt__FCM_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=100",
+                    "adapt__FCM_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=100",
+                    "adapt__FCM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=100"] ###### FIX THIS GUY ####
+        FUR_name = ["adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUR_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=40",
+                    "adapt__FUR_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=40"]
+        FUM_name = ["adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100",
+                    "adapt__FUM_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=100",
+                    "adapt__FUM_F_percentage=0.50_max_n=1500_step_n=100_start_n=100_reps=100",
+                    "adapt__FUM_F_percentage=0.75_max_n=1500_step_n=100_start_n=100_reps=100"]
+
+
+
+
+    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7, 4))
 
     plot_subfig_ar(name=FCR_name, ax=fcr, dump_dir=dump_dir, ar_type=ar_type)
     fcr.set_title('CR')
 
-    fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+    fcr.legend(bbox_to_anchor=(0., 1.18, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
     plot_subfig_ar(name=FCM_name, ax=fcm, dump_dir=dump_dir, ar_type=ar_type)
     fcm.set_title('CM')
@@ -407,8 +418,11 @@ def plot_all_ar(dump_dir="results/dump/", fig_dir="results/", ar_type="opt"):
     fur.set_ylim([0, 1])
     fum.set_ylim([0, 1])
 
-    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
-    plt.savefig(fig_dir +"ar_123_"+ar_type+"_adapt.pdf", bbox_inches='tight')
+    plt.tight_layout(pad=1, w_pad=.2, h_pad=0.2)
+    if network==123:
+        plt.savefig(fig_dir +"TCNS_greedy_ar_123_"+ar_type+"_adapt.pdf", bbox_inches='tight')
+    elif network==38:
+        plt.savefig(fig_dir +"TCNS_greedy_ar_38_"+ar_type+"_adapt.pdf", bbox_inches='tight')
 
 def plot_all_time(dump_dir="results/dump/", fig_dir="results/"):
     """
@@ -432,7 +446,8 @@ def plot_all_time(dump_dir="results/dump/", fig_dir="results/"):
 
     c=plot_subfig_time(name=FCR_name, ax=fcr, dump_dir=dump_dir)
     fcr.set_title('CR')
-    fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+    # fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+    fcr.legend(bbox_to_anchor=(.40, 1.18, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
     # c.legend(bbox_to_anchor=(.75, 1.15, 0, 0), loc=4, ncol=1, borderaxespad=0., fontsize=12)
     #fcr.set_ylim([0,120])
     # c.set_ylim([0,80000])
@@ -457,10 +472,11 @@ def plot_all_time(dump_dir="results/dump/", fig_dir="results/"):
     fig.text(0.00, 0.5, 'Running Time (seconds)', ha='center', va='center', rotation='vertical', fontsize=14)
     # fig.text(-0.01, 0.5, 'Running time (milliseconds)', ha='center', va='center', rotation='vertical', fontsize=14)
 
-    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
-    plt.savefig(fig_dir + "time_123_all.pdf", bbox_inches='tight')
+    # plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
+    plt.tight_layout(pad=1, w_pad=0.2, h_pad=0.2)
+    plt.savefig(fig_dir + "TCNS_greedy_time_123_all.pdf", bbox_inches='tight')
 
-def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
+def plot_all_loss(dump_dir="results/dump/", network=123, fig_dir="results/"):
     """
     :param dump_dir:
     :param fig_dir:
@@ -468,23 +484,25 @@ def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
     """
     plt.ioff()
     # plt.clf()
-    # FCR_name = "adapt__FCR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    # FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
-    # FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    # FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
-    FCR_name = "adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FCM_name = "adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FUR_name = "adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
-    FUM_name = "adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    if network == 123:
+        FCR_name = "adapt__FCR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FCM_name = "adapt__FCM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FUR_name = "adapt__FUR__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FUM_name = "adapt__FUM__topology=123__F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+    else:
+        FCR_name = "adapt__FCR_F_percentage=0.25_max_n=1500_step_n=100_start_n=100_reps=40"
+        FCM_name = "adapt__FCM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
+        FUR_name = "adapt__FUR_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=40"
+        FUM_name = "adapt__FUM_F_percentage=0.00_max_n=1500_step_n=100_start_n=100_reps=100"
 
 
 
-    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7,5))
+    fig, ((fcr, fcm), (fur, fum)) = plt.subplots(2, 2, sharex='col', figsize=(7.2,4))
     # fig, (fcm, fum) = plt.subplots(1, 2, figsize=(7, 3))
 
     plot_subfig_loss(name=FCR_name, ax=fcr, dump_dir=dump_dir)
     fcr.set_title('CR')
-    fcr.legend(bbox_to_anchor=(0., 1.15, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+    fcr.legend(bbox_to_anchor=(0.6, 1.18, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
 
 
@@ -503,8 +521,11 @@ def plot_all_loss(dump_dir="results/dump/", fig_dir="results/"):
 
     fig.text(0.00, 0.5, r'$\delta \times 100$', ha='center', va='center', rotation='vertical', fontsize=14)
 
-    plt.tight_layout(pad=1, w_pad=.8, h_pad=0.2)
-    plt.savefig(fig_dir + "loss_123_adapt.pdf", bbox_inches='tight')
+    plt.tight_layout(pad=1, w_pad=.2, h_pad=0.2)
+    if network == 123:
+        plt.savefig(fig_dir + "FnT_TCNS_loss_123.pdf", bbox_inches='tight')
+    else:
+        plt.savefig(fig_dir + "FnT_TCNS_loss_38.pdf", bbox_inches='tight')
 def plot_time(dump_dir="results/dump/", fig_dir="results/"):
     # plt.clf()
     FCR_name = "slow_FCR_F_percentage=0.00_max_n=2000_step_n=100_start_n=100_reps=100"
@@ -541,7 +562,7 @@ def plot_time(dump_dir="results/dump/", fig_dir="results/"):
     g = plt.subplot(121)
     g.errorbar(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1],
                yerr=mean_yerr_gr_time[:, 2], linestyle='None', color='blue')
-    g.plot(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1], color='blue', label="Alg.2", linewidth=2,
+    g.plot(mean_yerr_gr_time[:, 0], mean_yerr_gr_time[:, 1], color='blue', label="GreedysOPF", linewidth=2,
            linestyle='-', marker='.')
     plt.xticks(rotation=35)
     plt.legend(loc=2)

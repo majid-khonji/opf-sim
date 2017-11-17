@@ -128,14 +128,13 @@ def sim_FnT(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=10
                 no_LP_round_OPF_frac_percentage[(n - start_n + step_n) / step_n - 1, i] = sol_no_LP.frac_comp_percentage
                 ##############
 
-                if sol_opt.succeed == False or sol_round.succeed == False or sol_no_LP.succeed == False or sol_frac == False or sol_round.obj < sol_frac.obj:
+                if sol_opt.succeed == False or sol_round.succeed == False or sol_no_LP.succeed == False or sol_frac == False:
                     failure_count[(n,i)] += 1
                     print "\n─── Failure in solving one of the problems: [retry count %d]" % failure_count[(n,i)]
                     print "sol_opt.succeed: ", sol_opt.succeed
                     print "sol_round.succeed: ", sol_round.succeed
                     print "sol_no_LP.succeed: ", sol_no_LP.succeed
                     print "sol_frac.succeed: ", sol_frac.succeed
-                    print "frac > round: ", sol_round.obj < sol_frac.obj
                     print ''
 
                     elapsed_time = time.time() - t1

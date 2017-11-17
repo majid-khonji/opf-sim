@@ -52,55 +52,48 @@ def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
         sol = max_sOPF_OPT(ins, guess_x=guess_x, fractional=True)
     sol.frac_comp_count = 0
     if sol.succeed:
+        # print 'calling lp'
+        customers = np.setdiff1d(ins.I, guess_x)
+        sol_lp = sol
         if use_LP:
-            # print 'calling lp'
-            customers = np.setdiff1d(ins.I, guess_x)
             sol_lp = _LP(ins, sol, customers)
-            if sol_lp.succeed:
-                for k in customers:
-                    sol.x[k] = sol_lp.x[k]
+        if sol_lp.succeed:
+            for k in customers:
+                sol.x[k] = sol_lp.x[k]
 
-                for k in customers:
-                    if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
-                        sol.x[k] = 0
-                        sol.frac_comp_count += 1
-                # print "%d rounded from %f"%(k,sol.x[k])
-            # elif sol.x[k] < ins.rounding_tolerance:
-            #     sol.x[k] = 0
-            # elif sol.x[k] > 1 - ins.rounding_tolerance:
-            #     sol.x[k] = 1
-                if ins.util_max_objective:
-                    obj = 0
-                    for k in range(ins.n):
-                        obj += sol.x[k] * ins.loads_utilities[k]
-                    sol.obj = obj
-                    sol.frac_comp_percentage = sol.frac_comp_count/(ins.n*1.)*100
-                    sol.running_time = time.time() - t1
-                    return sol
-
-                else:
-                    obj = 1
-                    for k in range(ins.n):
-                        obj += (1 - sol.x[k]) * ins.loads_utilities[k]
-                    if not ins.drop_l_terms:
-                        sol2 = _solve_remaining(ins, guess_x=sol.x)
-                        if sol2.succeed:
-                            obj += T.graph['S_base'] * sol2.obj
-                        else:
-                            obj += T.graph['S_base'] * u.obj_min_loss_penalty(ins,sol,output='loss')
-                            sol2.x = sol.x
-                            sol2.succeed = True
-                        sol2.obj = obj
-                        sol2.frac_comp_count = sol.frac_comp_count
-                        sol2.frac_comp_percentage = sol2.frac_comp_count/(ins.n*1.)*100
-
-                        sol2.running_time = time.time() - t1
-                        return sol2
-            else:
-                sol.succeed = False
+            for k in customers:
+                if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
+                    sol.x[k] = 0
+                    sol.frac_comp_count += 1
+            if ins.util_max_objective:
+                obj = 0
+                for k in range(ins.n):
+                    obj += sol.x[k] * ins.loads_utilities[k]
+                sol.obj = obj
+                sol.frac_comp_percentage = sol.frac_comp_count/(ins.n*1.)*100
+                sol.running_time = time.time() - t1
                 return sol
-        else:
-            return sol
+
+            else:
+                obj = 1
+                for k in range(ins.n):
+                    obj += (1 - sol.x[k]) * ins.loads_utilities[k]
+                if not ins.drop_l_terms:
+                    sol2 = _solve_remaining(ins, guess_x=sol.x)
+                    if sol2.succeed:
+                        obj += T.graph['S_base'] * sol2.obj
+                    else:
+                        obj += T.graph['S_base'] * u.obj_min_loss_penalty(ins,sol,output='loss')
+                        sol2.x = sol.x
+                        sol2.succeed = True
+                    sol2.obj = obj
+                    sol2.frac_comp_count = sol.frac_comp_count
+                    sol2.frac_comp_percentage = sol2.frac_comp_count/(ins.n*1.)*100
+
+                    sol2.running_time = time.time() - t1
+                    return sol2
+    sol.succeed = False
+    return sol
 
 
 def _LP(ins, sol, customers=[], alg='lp'):
