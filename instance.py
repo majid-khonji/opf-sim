@@ -6,13 +6,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging
 import csv
+import scipy.stats as stats
 
 
 # import util as u
 
 ############## IMPORTANT ###########
-# index 0 is booked for the root
-# nodes numbering follows breadth first order
+# index 0 for the graph is reserved for the root
+# nodes numbering follows breadth first order from the root
 ####################################
 class OPF_instance(object):
     def __init__(self):
@@ -32,21 +33,25 @@ class OPF_instance(object):
         self.loads_P = None
         self.loads_Q = None
         self.loads_angles = None
-        self.loads_utilities = None # or penalties
+        self.loads_utilities = None  # or cost
         self.I = []  # idx of integer customers
         self.F = []  # idx of fractional customers
         self.customer_path_nodes = {}  # path of customer k
         self.customer_leaf_path_nodes = {}  # path of customer k
         self.leaf_nodes = {}  # leaf nodes
-        self.cons = '' # means both: voltage and capacity
+        self.cons = ''  # means both: voltage and capacity
         self.gen_cost = 1
         self.drop_l_terms = False
 
-        # terms use for scheduling demands
+        # used for scheduling demands
         self.scheduling_horizon = 24
         self.loads_at_time = {}
-        self.loads_time_length={}
+        self.loads_time_length = {}
         self.loads_time_path = {}
+
+        # used for multiple-choice scheduling with penalty
+        self.customer_loads = {}  # a dictionary that maps customers to a list of loads
+        self.load_penalties = {}
 
         # objective function
         self.util_max_objective = False
@@ -54,6 +59,53 @@ class OPF_instance(object):
         ### some settings (maybe we should use a different structure in future)
         self.rounding_tolerance = 0.00001
         self.infeas_tolerance = 0.00001
+
+class OPF_EV_instance(object):
+    def __init__(self):
+
+        self.charging_rates = [1500, 7000, 150000];
+        self.charging_rates_stds = [500, 1500, 10000] # not used
+
+        # used for scheduling demands
+        self.scheduling_horizon = 48/.25  # 48 hours
+        self.step_length = .25  # 15 mins
+
+        self.capacity_over_time = []
+        self.base_load_over_time = []
+
+        self.cost_rate_matrix = None  # a 3x(sheduling_horizon/step_length) matrix gives cost of 3 levels at any time step
+
+        # used for multiple-choice scheduling with penalty
+        self.customer_charging_options = {}  # a dictionary that maps customers to available charging options [(0, rate),(1,rate),(2,rate)]
+        self.customer_utilities = {}  # dictionary customer -> penalty
+        self.customer_usage = {}
+        self.customer_battery_size = {}
+        self.customer_SOCs = {}
+
+        self.customer_charge_start_at_time = {}
+        self.customers_at_time = {}
+        self.customer_charging_length = {}
+        self.customer_charging_time_path_edges = {}
+        self.customer_charging_time_path = {}
+
+        self.rounding_tolerance = 0.00001
+
+
+class OPF_EV_sol(object):
+    def __init__(self):
+        self.obj = np.infty
+        self.idx = []  # if all are integer (F=[])
+        self.running_time = 0
+        ar = None  # approximation ratio
+        self.topology = None  # updated graph with voltage, current,..etc filled
+        self.x = {}  # variable for demands
+        self.y = {}  # variable for customers
+
+        self.P_0 = 0  # real power from the root
+        self.frac_x_comp_count = 0
+        self.frac_y_comp_count = 0
+        self.succeed = False
+        self.gurobi_model = None
 
 
 class OPF_sol(object):
@@ -68,17 +120,17 @@ class OPF_sol(object):
         self.Q = {}
         self.l = {}
         self.v = {}
-        self.P_0 = 0 #real power from the root
+        self.P_0 = 0  # real power from the root
         self.frac_comp_count = 0
         self.frac_comp_percentage = 0
         self.succeed = False
-        self.gurobi_model= None
+        self.gurobi_model = None
 
 
 # cons=''|'V'|'C'|
 # gen_cost cost of generation
 def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
-                 n=10,per_unit=True, voltage_deviation_percentage=5,
+                 n=10, per_unit=True, voltage_deviation_percentage=5,
                  cus_load_range=(500, 5000), capacity_flag='C_',
                  ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
                  v_min=0.81000, cons='', gen_cost=.01):
@@ -109,9 +161,9 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
         ins.v_max = v_max
         ins.v_min = v_min
     else:
-        ins.v_0 = T.graph['V_base']**2 # remember |V|^2 = v
-        ins.v_max = ins.v_0*(1+voltage_deviation_percentage/100.)
-        ins.v_min = ins.v_0*(1-voltage_deviation_percentage/100.)
+        ins.v_0 = T.graph['V_base'] ** 2  # remember |V|^2 = v
+        ins.v_max = ins.v_0 * (1 + voltage_deviation_percentage / 100.)
+        ins.v_min = ins.v_0 * (1 - voltage_deviation_percentage / 100.)
     ins.V_ = (v_0 - v_min) / 2
     loads_S = None
     loads_angles = None
@@ -157,13 +209,132 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
 
     return ins
 
-#sheduling instance
-def sim_sch_instance(scenario="FCM", time_steps=24,capacity=2000000, F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
-                 n=10,per_unit=False, voltage_deviation_percentage=5,
-                 cus_load_range=(500, 5000), capacity_flag='C_',
-                 ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
-                 v_min=0.81000, cons='', gen_cost=.01):
 
+# for electric vehicles sims (e-energy 2018)
+# scenario=[Q|L] Q=quadratic penalty, L = linear penalty
+def sim_instance_ev_scheduling(scenario="L", n=10,
+                               time_steps=48, step_length=.25, num_base_load_household=650, capacity=1000000,
+                               charging_rates=[1500, 7000, 150000], charging_rates_stds=[500, 1000, 10000],
+                               initial_SOC_range=(.2, .8), SOC_mu=.5, SOC_std=.3,
+                               battery_size_range=(24000., 100000.), battery_size_mu=30000., battery_size_std=10000.,
+                               charging_start_time_mean=18.,
+                               charging_start_time_std=5.,
+                               charging_length_mean = 6.,
+                               charging_length_std = 2.,
+                               penalty_rate=.37,
+                               gen_cost=.01):
+    ins = OPF_EV_instance()
+    ins.charging_rates = charging_rates
+    ins.charging_rates_stds = charging_rates_stds
+    # load and supply profile
+    ins.capacity_over_time = np.ones(int(time_steps / step_length)) * capacity
+
+    # average house hold consumption in 1/1/2011 - 1/2/2011 (from DOMSM11.DLP)
+    day1 = np.array(
+        [0.852, 0.788, 0.731, 0.684, 0.649, 0.659, 0.685, 0.755, 0.811, 0.861, 0.873, 0.886, 0.871, 0.833, 0.830, 0.815,
+         0.876, 1.042, 1.093, 1.111, 1.100, 1.063, 0.949, 0.842
+         ])
+    day2 = np.array(
+        [0.766, 0.701, 0.658, 0.633, 0.619, 0.627, 0.666, 0.720, 0.806, 0.850, 0.878, 0.919, 0.961, 0.978, 1.009, 1.045,
+         1.099, 1.227, 1.251, 1.252, 1.211, 1.131, 0.992, 0.826
+         ])
+    two_days = np.append(day1, day2)
+
+    ins.base_load_over_time = 1000 * num_base_load_household * np.repeat(two_days, 1 / step_length)
+    ins.scheduling_horizon = int(time_steps / step_length)
+
+    # cost per kWh
+    # based on TOU-D-A week days
+    level1_cost = np.zeros(24)
+    level1_cost[8:14] = .27  # off-peak
+    level1_cost[14:20] = .36  # on-peak
+    level1_cost[20:22] = .27  # off-peak
+    level1_cost[22:24] = .13  # super off-peak
+    level1_cost[0:8] = .13  # super off-peak
+    # same as level 1
+    level2_cost = level1_cost
+    # based on TOU-EV-1 every day
+    level3_cost = np.zeros(24)
+    level3_cost[12:21] = .37  # super on-peak
+    level3_cost[21:24] = .13  # off-peak
+    level3_cost[0:12] = .13  # off-peak
+
+    # cost matrix 3 x time_steps
+    cost = np.append([level1_cost], [level2_cost], axis=0)
+    cost = np.append(cost, [level3_cost], axis=0)
+    cost = np.append(cost, cost, axis=1)
+    cost = np.repeat(cost, 1 / step_length, axis=1)
+    cost = cost * step_length  # for kWh to kW 15 mins
+    ins.cost_rate_matrix = cost
+
+
+    ins.customers_at_time = {t: [] for t in np.arange(ins.scheduling_horizon)}
+
+    ins.n = n
+
+    # distribute demands
+    soc = stats.truncnorm((initial_SOC_range[0] - SOC_mu) / SOC_std, (initial_SOC_range[1] - SOC_mu) / SOC_std, SOC_mu,SOC_std)
+    ins.customer_SOCs = soc.rvs(n)
+
+    battery_size = stats.truncnorm((battery_size_range[0] - battery_size_mu) / battery_size_std,
+                                   (battery_size_range[1] - battery_size_mu) / battery_size_std, battery_size_mu,
+                                   battery_size_std)
+    ins.customer_battery_size = battery_size.rvs(n)
+
+    chg_time = stats.truncnorm((- charging_start_time_mean) / charging_start_time_std,
+                               (ins.scheduling_horizon*step_length - 1 - charging_start_time_mean) / charging_start_time_std,
+                               charging_start_time_mean / step_length, charging_start_time_std / step_length)
+    ins.customer_charge_start_at_time = chg_time.rvs(n).astype(int)
+
+
+    for i in np.arange(n):
+        # num_of_options = np.random.randint(1, len(charging_rates) + 1)
+        choices = np.unique(np.random.choice([0, 1, 2], len(charging_rates)))
+        ins.customer_charging_options[i] = choices
+        ins.customer_usage[i] = (1 - ins.customer_SOCs[i]) * ins.customer_battery_size[i]
+
+        if scenario[0] == 'L':  # linear penalty cost
+            ins.customer_utilities[i] = 2 * ins.customer_usage[i] / 1000 * penalty_rate
+        elif scenario[0] == 'Q':  # quadratic cost
+            ins.customer_utilities[i] = (ins.customer_usage[i] / 1000 * penalty_rate) ** 2
+
+        # distributing customers over time
+        min_chg_length = ins.customer_usage[i] / ins.charging_rates[np.max(choices)] # in hours
+        # print("----")
+        # print('param', (np.ceil(min_chg_length) - charging_length_mean)/charging_length_std,
+        #                              (ins.scheduling_horizon*step_length - ins.customer_at_time[i]*step_length - charging_length_mean)/charging_length_std,
+        #                              charging_length_mean/step_length, charging_length_std/step_length)
+        chg_length = stats.truncnorm((np.ceil(min_chg_length) - charging_length_mean) / charging_length_std,
+                                     (ins.scheduling_horizon * step_length - 2 - ins.customer_charge_start_at_time[i] * step_length - charging_length_mean) / charging_length_std,
+                                     charging_length_mean / step_length, charging_length_std / step_length)
+        while True:
+            try:
+                ins.customer_charging_length[i] = np.ceil(chg_length.rvs(1))[0]
+            except ValueError:
+                continue
+            break
+        # print("length", min_chg_length,ins.customer_charging_length[i])
+        # print("start ", ins.customer_at_time[i])
+
+        chg_path_nodes = np.arange(ins.customer_charge_start_at_time[i], ins.customer_charge_start_at_time[i] + ins.customer_charging_length[i] + 1)
+        chg_path_nodes = chg_path_nodes.astype(int)
+        ins.customer_charging_time_path[i] = chg_path_nodes
+        ins.customer_charging_time_path_edges[i] = zip(chg_path_nodes, chg_path_nodes[1:])
+        ins.customer_charging_length[i] = len(ins.customer_charging_time_path[i])
+
+        for t in ins.customer_charging_time_path[i]: ins.customers_at_time[t].append(i)
+
+        # print("start/length ", ins.customer_at_time[i], ins.customer_charging_length[i])
+    return ins
+
+
+# sheduling instance
+def sim_instance_sch(scenario="FCM", time_steps=24, capacity=2000000, F_percentage=0.0,
+                     load_theta_range=(0, 1.2566370614359172),
+                     n=10, per_unit=False, voltage_deviation_percentage=5,
+                     cus_load_range=(500, 5000), capacity_flag='C_',
+                     ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
+                     v_min=0.81000, cons='', gen_cost=.01):
     ins = OPF_instance()
     ins.drop_l_terms = True
     ins.util_max_objective = True
@@ -244,12 +415,11 @@ def sim_sch_instance(scenario="FCM", time_steps=24,capacity=2000000, F_percentag
     return ins
 
 
-
 # returns T  of type nx.Graph()
 # loss C_ or L flags for T are not set
 def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base=5000000, V_base=4160, visualize=False,
                      loss_ratio=0.0):
-    if filename=='test-feeders/13-node.csv' or filename=='test-feeders/13-node-per-unit.csv':
+    if filename == 'test-feeders/13-node.csv' or filename == 'test-feeders/13-node-per-unit.csv':
         S_base = 8000000
         V_base = 11000
     # T = nx.Graph()
@@ -270,7 +440,7 @@ def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base=5000
     nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
     nx.set_edge_attributes(T, 'L', {k: 0 for k in T.edges()})  # loss upper bound
     nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
-    nx.set_node_attributes(T, 'path', {k: nx.shortest_path(T,0,k) for k in T.nodes()})
+    nx.set_node_attributes(T, 'path', {k: nx.shortest_path(T, 0, k) for k in T.nodes()})
     leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
     T.graph['leaf_nodes'] = leaf_nodes
     T.graph['leaf_edges'] = [(i, nx.predecessor(T, 0, i)[0]) for i in leaf_nodes]
@@ -557,10 +727,10 @@ def _distribute_customers(ins, capacity_flag='C_'):
         ins.customer_node[k] = attached_node
         ins.customer_path_nodes[k] = T.node[attached_node]['path']
 
-        ins.customer_path[k] = zip(ins.customer_path_nodes[k], ins.customer_path_nodes[k][1:]) # edges
+        ins.customer_path[k] = zip(ins.customer_path_nodes[k], ins.customer_path_nodes[k][1:])  # edges
         for e in ins.customer_path[k]: T[e[0]][e[1]]['K'].append(k)
 
-        #computingn Q values at leafs
+        # computingn Q values at leafs
         for l in ins.leaf_nodes:
             ins.customer_leaf_path[(k, l)] = []
             leaf_path = T.node[l]['path']
@@ -577,23 +747,22 @@ def _distribute_customers(ins, capacity_flag='C_'):
             for e in ins.customer_leaf_path[(k, l)]:
                 ins.Q[(k, l)] += T[e[0]][e[1]]['z'][0] * ins.loads_P[k] + T[e[0]][e[1]]['z'][1] * ins.loads_Q[k]
 
+
 # topology must be filled in instance ins
 def _distribute_customers_over_time(ins):
     T = ins.topology
     n = ins.n
     for k in range(n):
-        attached_node = np.random.choice(ins.scheduling_horizon-1)
+        attached_node = np.random.choice(ins.scheduling_horizon - 1)
         # print k,':', attached_node
         ins.loads_at_time[k] = attached_node
 
-        length = np.random.choice(np.arange(1, ins.scheduling_horizon-attached_node))
+        length = np.random.choice(np.arange(1, ins.scheduling_horizon - attached_node))
         # print '  length ', length
-        loads_time_path_nodes = np.arange(attached_node, attached_node + length +1 )
+        loads_time_path_nodes = np.arange(attached_node, attached_node + length + 1)
         # print '  ', loads_time_path_nodes
 
-
-
-        ins.loads_time_path[k]= zip(loads_time_path_nodes, loads_time_path_nodes[1:])
+        ins.loads_time_path[k] = zip(loads_time_path_nodes, loads_time_path_nodes[1:])
         ins.loads_time_length[k] = len(ins.loads_time_path[k])
         for e in ins.loads_time_path[k]: T[e[0]][e[1]]['K'].append(k)
 
@@ -615,7 +784,7 @@ def _slow_distribute_customers(ins, capacity_flag='C_'):
         T.node[attached_node]['N'].append(k)
         ins.customer_node[k] = attached_node
         ins.customer_path_nodes[k] = nx.shortest_path(T, 0, attached_node)
-        ins.customer_path[k] = zip(ins.customer_path_nodes[k], ins.customer_path_nodes[k][1:]) # edges
+        ins.customer_path[k] = zip(ins.customer_path_nodes[k], ins.customer_path_nodes[k][1:])  # edges
         for e in ins.customer_path[k]: T[e[0]][e[1]]['K'].append(k)
 
         #########
@@ -650,6 +819,7 @@ def _slow_distribute_customers(ins, capacity_flag='C_'):
                 tmp_str += '(%f, %f) ' % (T[e[0]][e[1]]['z'][0], T[e[0]][e[1]]['z'][1])
             logging.debug(tmp_str)
             logging.debug('Q[(%d,%d)]=%f' % (k, l, ins.Q[(k, l)]))
+
 
 def single_link_instance(n=10, capacity=1, z=(.01, .01), loss_ratio=.08, S_base=5000000, Rand=True):
     ins = OPF_instance()
@@ -785,8 +955,8 @@ if __name__ == "__main__":
 
     # ins = sim_instance(T, scenario="FUI", n=1, ind_load_range=(1000000, 4000000))
     T = nx.path_graph(24)
-    nx.set_edge_attributes(T,'K', {k:[] for k in T.edges()})
-    nx.set_node_attributes(T,'N',{k:[] for k in T.nodes()})
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})
+    nx.set_node_attributes(T, 'N', {k: [] for k in T.nodes()})
     ins = OPF_instance()
     ins.topology = T
     ins.scheduling_horizon = 24

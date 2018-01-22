@@ -62,7 +62,7 @@ def sim_FnT(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=10
             failure_OPT_count[(n,i)] = 0
             while success == False:
 
-                ins = ii.sim_sch_instance(scenario=scenario, n=n, F_percentage=F_percentage)
+                ins = ii.sim_instance_sch(scenario=scenario, n=n, F_percentage=F_percentage)
 
                 ### opt
                 sol_opt = oo.max_sOPF_OPT(ins)
@@ -245,7 +245,7 @@ def sim_FnT(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=10
 ###########################################################
 ###########################################################
 # topology = [13 | 123]
-def sim_TPS(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=100, reps=40, dry_run=False,
+def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=100, reps=40, dry_run=False,
             dump_dir="results/dump/", topology=123):
     name = "TPS:[%s]__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
         scenario, topology, F_percentage, max_n, step_n, start_n, reps)
