@@ -248,25 +248,48 @@ def round_EV_scheduling(ins, guess_x={}, round_x_after_y = True):
     sol = max_ev_scheduling_OPT(ins, guess_x=guess_x, fractional=True)
     sol.frac_x_comp_count = 0
     sol.frac_y_comp_count = 0
+    sol.rounded_up_count = 0
+    sol.rounded_down_count = 0
+    energy_usage = {}
+    energy_usage_frac_sol = {}
     if sol.succeed:
-        # print 'calling lp'
-        customers = np.setdiff1d(np.arange(ins.n), guess_x)
+        # customers = np.setdiff1d(np.arange(ins.n), guess_x)
+        customers = np.arange(ins.n)
         sol.frac_x = sol.x.copy()
         sol.frac_y = sol.y.copy()
-
         for k in customers:
+            energy_usage[k] = 0
+            energy_usage_frac_sol[k] = 0
             is_y_rounded = False
             if ins.rounding_tolerance < sol.y[k] < 1 - ins.rounding_tolerance:
                 sol.y[k] = 0
                 sol.frac_y_comp_count += 1
                 is_y_rounded = True
+
             for c in ins.customer_charging_options[k]:
                 for t in ins.customer_charging_time_path[k]:
-                    if ins.rounding_tolerance < sol.x[(k, c, t)] < 1 - ins.rounding_tolerance:
+                    energy_usage_frac_sol[k] += sol.x[k,c,t] * ins.charging_rates[c] * ins.step_length
+                    if is_y_rounded and round_x_after_y:
                         sol.x[(k, c, t)] = 0
+                        sol.rounded_down_count +=1
+                    elif ins.rounding_tolerance < sol.x[(k, c, t)] < 1 - ins.rounding_tolerance:
                         sol.frac_x_comp_count += 1
-                    if is_y_rounded:
-                        sol.x[(k, c, t)] = 0
+                        if sol.x[(k,c,t)] > .0001:
+                            sol.x[(k, c, t)] = 1
+                            sol.rounded_up_count +=1
+                        else:
+                            sol.x[(k, c, t)] = 0
+                            sol.rounded_down_count +=1
+                    energy_usage[k] += sol.x[k,c,t] * ins.charging_rates[c] * ins.step_length
+
+            # set y variable
+            if energy_usage[k] < ins.customer_usage[k] - ins.rounding_tolerance:
+                sol.y[k] = 0
+                for c in ins.customer_charging_options[k]:
+                    for t in ins.customer_charging_time_path[k]:
+                        sol.x[(k,c,t)] = 0
+
+
         sol.running_time = time.time() - t1
 
         # calculate new obj
@@ -276,9 +299,21 @@ def round_EV_scheduling(ins, guess_x={}, round_x_after_y = True):
             for c in ins.customer_charging_options[k]:
                 for t in ins.customer_charging_time_path[k]:
                     obj -= sol.x[(k,c,t)] * ins.cost_rate_matrix[c,t]
+        # calculate P
+        P = {}
+        for t in np.arange(ins.scheduling_horizon):
+            P[t] = ins.base_load_over_time[t]
+            for k in ins.customers_at_time[t]:
+                for c in ins.customer_charging_options[k]:
+                    P[t] += sol.x[(k,c,t)] * ins.charging_rates[c] * ins.step_length
+
+
 
         sol.frac_obj = sol.obj
         sol.obj = obj
+        sol.customer_energy_usage = energy_usage
+        sol.customer_energy_usage_frac_sol = energy_usage_frac_sol
+        sol.P = P
     sol.running_time = time.time() - t1
     return sol
 
@@ -298,6 +333,8 @@ def max_ev_scheduling_OPT(ins, guess_x={}, fractional=False, debug=False, tolera
     total_charge_per_customer = {}
 
     time_path = np.arange(ins.scheduling_horizon)
+    num_of_constraints = 0
+    num_of_constraints_paper_formulation = 0
 
     for k in np.arange(ins.n):
         if fractional:
@@ -308,9 +345,9 @@ def max_ev_scheduling_OPT(ins, guess_x={}, fractional=False, debug=False, tolera
         for c in ins.customer_charging_options[k]:
             for t in ins.customer_charging_time_path[k]:
                 if fractional:
-                    x[(k, c, t)] = m.addVar(vtype=gbp.GRB.BINARY, name="x[(%d,%d,%d)]" % (k, c, t))
-                else:
                     x[(k, c, t)] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[(%d,%d,%d)]" % (k, c, t))
+                else:
+                    x[(k, c, t)] = m.addVar(vtype=gbp.GRB.BINARY, name="x[(%d,%d,%d)]" % (k, c, t))
                 customer_costs.append(x[(k, c, t)] * ins.cost_rate_matrix[c, t])
                 total_charge_per_customer[k] += x[k, c, t] * ins.charging_rates[c] * ins.step_length
 
@@ -328,23 +365,33 @@ def max_ev_scheduling_OPT(ins, guess_x={}, fractional=False, debug=False, tolera
         rhs_P = ins.base_load_over_time[t] + gbp.quicksum(ev_charge_list)
         m.addConstr(P[t], gbp.GRB.EQUAL, rhs_P, "P_%d" % t)
         m.addConstr(P[t], gbp.GRB.LESS_EQUAL, ins.capacity_over_time[t], "C_%d" % t)
+        num_of_constraints += 2
+        num_of_constraints_paper_formulation += 1
 
-    # single charging option per customer contraints
     for k in np.arange(ins.n):
+
+        # single charging option per customer contraints
         for t in ins.customer_charging_time_path[k]:
             X = gbp.quicksum([x[(k, c, t)] for c in ins.customer_charging_options[k]])
             m.addConstr(X, gbp.GRB.LESS_EQUAL, 1, "sum_c X(%d,%s) <= 1" % (k, str(t)))
-    # usage constraint
-    for k in np.arange(ins.n):
+            num_of_constraints += 1
+            num_of_constraints_paper_formulation += 1
+
+        # usage constraint
         lhs = y[k] * ins.customer_usage[k] - total_charge_per_customer[k]
         m.addConstr(lhs, gbp.GRB.LESS_EQUAL, 0, "usage[%d]" % k)
+        num_of_constraints += 1
+        num_of_constraints_paper_formulation += 1
 
-    # box constraints
-    for k in np.arange(ins.n):
+        # box constraints
         m.addConstr(y[k] <= 1, "y[%d]: ub")
+        num_of_constraints += 1
+        num_of_constraints_paper_formulation += 1
         for c in ins.customer_charging_options[k]:
             for t in ins.customer_charging_time_path[k]:
                 m.addConstr(x[(k, c, t)] >= 0, "x[%s]: lb" % str((k, c, t)))
+                num_of_constraints += 1
+                num_of_constraints_paper_formulation += 1
 
     # for k in guess_x.keys():
     #     m.addConstr(x[k], gbp.GRB.EQUAL, guess_x[k], "x[%d]: guess " % k)
@@ -361,8 +408,11 @@ def max_ev_scheduling_OPT(ins, guess_x={}, fractional=False, debug=False, tolera
         sol.x = {(k, c, t): x[(k, c, t)].x  for k in range(ins.n) for t in ins.customer_charging_time_path[k]
                  for c in ins.customer_charging_options[k] }
         sol.y = {k: y[k].x for k in range(ins.n)}
+        sol.total_charge_per_customer = total_charge_per_customer
         sol.obj = obj.getValue()
-        sol.P = P
+        sol.P = {t: P[t].x for t in np.arange(ins.scheduling_horizon)}
+        sol.number_of_constraints_paper_formulation = num_of_constraints_paper_formulation
+        sol.number_of_constraints = num_of_constraints
         sol.succeed = True
     else:
         sol.succeed = False

@@ -213,7 +213,7 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
 # for electric vehicles sims (e-energy 2018)
 # scenario=[Q|L] Q=quadratic penalty, L = linear penalty
 def sim_instance_ev_scheduling(scenario="L", n=10,
-                               time_steps=48, step_length=.25, num_base_load_household=650, capacity=1000000,
+                               time_steps=48, step_length=.25, num_base_load_household=750, capacity=1000000,
                                charging_rates=[1500, 7000, 150000], charging_rates_stds=[500, 1000, 10000],
                                initial_SOC_range=(.2, .8), SOC_mu=.5, SOC_std=.3,
                                battery_size_range=(24000., 100000.), battery_size_mu=30000., battery_size_std=10000.,
