@@ -10,6 +10,148 @@ import s_maxOPF_algs as ss
 import OPF_algs as oo
 import logging
 
+# sim for EV-scheduling (E-Energy 2018)
+def sim_ev(scenario="L", max_n=1000, step_n=50, start_n=100, reps=40, dry_run=False,
+            dump_dir="results/dump/"):
+    name = "EV:[%s]__max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
+        scenario, max_n, step_n, start_n, reps)
+    ### set up variables
+    assert (max_n % step_n == 0)
+    logger = logging.getLogger()
+    logger.setLevel(logging.ERROR)
+
+    t1 = time.time()
+    #####
+
+    round_EV_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_frac_x_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_frac_y_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_frac_com_percentage = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_x_down_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_x_up_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_count_y_due_to_rounded_x = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+
+    frac_OPT_EV_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    frac_OPT_EV_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    frac_OPT_EV_num_of_constraints = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+    failure_count = {}
+    failure_OPT_count = {}
+
+    for n in range(start_n, max_n + 1, step_n):
+        for i in range(reps):
+            elapsed_time = time.time() - t1
+            m, s = divmod(elapsed_time, 60)
+            h, m = divmod(m, 60)
+            print "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+            print name
+            print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+
+            success = False
+            failure_count[(n,i)] = 0
+            failure_OPT_count[(n,i)] = 0
+            while success == False:
+                ins = ii.sim_instance_ev_scheduling(scenario=scenario, n=n)
+
+                sol_round = oo.round_EV_scheduling(ins)
+                sol_opt = sol_round.frac_sol
+
+                if sol_opt.succeed == False:
+                    failure_OPT_count[(n,i)] += 1
+                    print "\n─── too small obj: [retry count %d]\n" % failure_OPT_count[(n,i)]
+                    elapsed_time = time.time() - t1
+                    m, s = divmod(elapsed_time, 60)
+                    h, m = divmod(m, 60)
+                    print name
+                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+                    continue
+                ##############
+
+                ### OPT
+                frac_OPT_EV_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
+                frac_OPT_EV_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
+                frac_OPT_EV_num_of_constraints[(n - start_n + step_n) / step_n - 1, i] = sol_opt.number_of_constraints_paper_formulation
+                print "OPT obj:              %15.2f  |  time: %5.3f" % (
+                    sol_opt.obj, sol_opt.running_time)
+
+                ### round_EV
+                sol_round.ar = sol_round.ar
+                print "round_EV obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_round.obj, sol_round.running_time, sol_round.ar)
+
+                round_EV_obj[(n - start_n + step_n) / step_n - 1, i] = sol_round.obj
+                round_EV_time[(n - start_n + step_n) / step_n - 1, i] = sol_round.running_time
+                round_EV_ar[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
+                round_EV_frac_x_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_x_comp_count
+                round_EV_frac_y_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_y_comp_count
+                round_EV_frac_com_percentage[(n - start_n + step_n) / step_n - 1, i] = (sol_round.frac_x_comp_count+sol_round.frac_x_comp_count)/sol_opt.number_of_constraints_paper_formulation
+                round_EV_x_down_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.rounded_up_count
+                round_EV_x_up_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.rounded_down_count
+                round_EV_count_y_due_to_rounded_x[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
+
+                ##############
+                if sol_opt.succeed == False or sol_round.succeed == False:
+                    failure_count[(n,i)] += 1
+                    print "\n─── Failure in solving one of the problems: [retry count %d]" % failure_count[(n,i)]
+                    print "sol_opt.succeed: ", sol_opt.succeed
+                    print "sol_round.succeed: ", sol_round.succeed
+                    print ''
+
+                    elapsed_time = time.time() - t1
+                    m, s = divmod(elapsed_time, 60)
+                    h, m = divmod(m, 60)
+                    print name
+                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+                    continue
+                success = True
+                print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+
+        # intermediate saving
+        fin_time = time.time() - t1
+        if dry_run == False:
+            np.savez(dump_dir + name,
+                     failure_count=failure_count,
+                     failure_EV_count=failure_OPT_count,
+                     round_EV_obj=round_EV_obj,
+                     round_EV_ar=round_EV_ar,
+                     round_EV_time=round_EV_time,
+                     round_EV_frac_x_count=round_EV_frac_x_count,
+                     round_EV_frac_y_count=round_EV_frac_y_count,
+                     round_EV_frac_com_percentage=round_EV_frac_com_percentage,
+                     round_EV_x_down_count=round_EV_x_down_count,
+                     round_EV_x_up_count=round_EV_x_up_count,
+                     round_EV_count_y_due_to_rounded_x= round_EV_count_y_due_to_rounded_x,
+                     frac_EV_obj=frac_OPT_EV_obj,
+                     frac_EV_time=frac_OPT_EV_time,
+                     frac_OPT_EV_num_of_constraints=frac_OPT_EV_num_of_constraints,
+                     fin_time=fin_time)
+
+    m, s = divmod(fin_time, 60)
+    h, m = divmod(m, 60)
+    print "\n=== simulation finished in %d:%02d:%02d ===\n" % (h, m, s)
+
+    return name
+
+
+
+
+
+
+
+
+
+
+
+
+
+######################################################
+######################################################
+######################################################
+######################################################
+######################################################
 # sim for scheduling
 def sim_FnT(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=100, reps=40, dry_run=False,
             dump_dir="results/dump/"):
@@ -237,13 +379,11 @@ def sim_FnT(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=10
 
 
 
-
-
-###########################################################
-###########################################################
-###########################################################
-###########################################################
-###########################################################
+######################################################
+######################################################
+######################################################
+######################################################
+######################################################
 # topology = [13 | 123]
 def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=100, reps=40, dry_run=False,
             dump_dir="results/dump/", topology=123):
@@ -475,6 +615,11 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
 
     return name
 
+######################################################
+######################################################
+######################################################
+######################################################
+######################################################
 
 # topology = [38 | 123] (IEEE topology. The code can be cleaned up in future, only csv file should be given)
 def sim_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=True,

@@ -13,7 +13,7 @@ except ImportError:
 
 def gurobi_setting(m):
     m.setParam("OutputFlag", 0)
-    m.setParam("TimeLimit", 200)
+    m.setParam("TimeLimit", 150)
     m.setParam("MIPGapAbs", 0.00001)
     m.setParam("IntFeasTol",0.00001)
     m.setParam("DualReductions", 0) # without this, sometimes it returns error 4 (infeasible or unbounded)
@@ -173,3 +173,32 @@ def mean_yerr(a, c=0.950):
     m, se = np.mean(a), stats.sem(a)
     yerr = se * stats.t.ppf((1 + c) / 2., n - 1)
     return m, yerr
+
+def check_ev_scheduling_sol_feasibility(ins,sol):
+    # testing capacity correcgtness
+    total_ev_charge_at_time = {}
+    for t in np.arange(ins.scheduling_horizon):
+        total_ev_charge_at_time[t] = np.sum([ins.charging_rates[c] * ins.step_length * sol.x[(k, c, t)]
+                                                          for k in ins.customers_at_time[t] for c in
+                                                          ins.customer_charging_options[k]])
+        # print total_ev_charge_at_time[t] + ins.base_load_over_time[t]
+        assert (total_ev_charge_at_time[t] -ins.rounding_tolerance <= (ins.capacity_over_time[t] - ins.base_load_over_time[t])), "capacity violated at time %d"%t
+
+
+    # testing y correctness
+    energy_usage = {}
+    for k in range(ins.n):
+        energy_usage[k] = 0
+        assert sol.y[k] in [0,1], "y is fractional"
+        for t in ins.customer_charging_time_path[k]:
+            sum_of_x = 0
+            for c in ins.customer_charging_options[k]:
+                energy_usage[k] += sol.x[(k, c, t)] * ins.charging_rates[c] * ins.step_length
+                sum_of_x += sol.x[(k,c,t)]
+                assert sol.x[(k,c,t)] in [1,0], "x is fractional"
+            assert sum_of_x <= 1, "sum X > 1!"
+        assert (energy_usage[k] <= ins.customer_usage[k] and sol.y[k] == 0) or (energy_usage[k] >= ins.customer_usage[k] and sol.y[k] == 1), "y and x are inconsistant"
+        print "satisfy ratio %d:"%k, energy_usage[k]/ins.customer_usage[k]
+
+    print("solution is feasible!")
+

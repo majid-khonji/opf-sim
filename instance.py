@@ -93,15 +93,13 @@ class OPF_EV_instance(object):
 
 class OPF_EV_sol(object):
     def __init__(self):
-        self.obj = np.infty
-        self.idx = []  # if all are integer (F=[])
+        self.obj = -np.infty
         self.running_time = 0
-        ar = None  # approximation ratio
-        self.topology = None  # updated graph with voltage, current,..etc filled
+        self.ar = None  # approximation ratio
         self.x = {}  # variable for demands
         self.y = {}  # variable for customers
 
-        self.P_0 = 0  # real power from the root
+        self.P = 0  # real power from the root
         self.frac_x_comp_count = 0
         self.frac_y_comp_count = 0
         self.succeed = False
@@ -214,15 +212,14 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
 # scenario=[Q|L] Q=quadratic penalty, L = linear penalty
 def sim_instance_ev_scheduling(scenario="L", n=10,
                                time_steps=48, step_length=.25, num_base_load_household=750, capacity=1000000,
-                               charging_rates=[1500, 7000, 150000], charging_rates_stds=[500, 1000, 10000],
+                               charging_rates=[1500, 7000, 50000], charging_rates_stds=[500, 1000, 10000],
                                initial_SOC_range=(.2, .8), SOC_mu=.5, SOC_std=.3,
                                battery_size_range=(24000., 100000.), battery_size_mu=30000., battery_size_std=10000.,
                                charging_start_time_mean=18.,
                                charging_start_time_std=5.,
                                charging_length_mean = 6.,
                                charging_length_std = 2.,
-                               penalty_rate=.37,
-                               gen_cost=.01):
+                               penalty_rate=.37):
     ins = OPF_EV_instance()
     ins.charging_rates = charging_rates
     ins.charging_rates_stds = charging_rates_stds
@@ -294,7 +291,7 @@ def sim_instance_ev_scheduling(scenario="L", n=10,
         ins.customer_usage[i] = (1 - ins.customer_SOCs[i]) * ins.customer_battery_size[i]
 
         if scenario[0] == 'L':  # linear penalty cost
-            ins.customer_utilities[i] = 2 * ins.customer_usage[i] / 1000 * penalty_rate
+            ins.customer_utilities[i] =  ins.customer_usage[i] / 1000 * penalty_rate
         elif scenario[0] == 'Q':  # quadratic cost
             ins.customer_utilities[i] = (ins.customer_usage[i] / 1000 * penalty_rate) ** 2
 
