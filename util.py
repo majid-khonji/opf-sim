@@ -174,31 +174,72 @@ def mean_yerr(a, c=0.950):
     yerr = se * stats.t.ppf((1 + c) / 2., n - 1)
     return m, yerr
 
-def check_ev_scheduling_sol_feasibility(ins,sol):
+def check_ev_scheduling_fixed_int_sol_feasibility(ins,sol, fractional_sol=False):
     # testing capacity correcgtness
     total_ev_charge_at_time = {}
     for t in np.arange(ins.scheduling_horizon):
-        total_ev_charge_at_time[t] = np.sum([ins.charging_rates[c] * ins.step_length * sol.x[(k, c, t)]
-                                                          for k in ins.customers_at_time[t] for c in
-                                                          ins.customer_charging_options[k]])
+        total_ev_charge_at_time[t] = np.sum([ins.charging_rates[c] * sol.x[k, c]
+                                             for (k,c) in ins.customers_at_time[t]] )
         # print total_ev_charge_at_time[t] + ins.base_load_over_time[t]
         assert (total_ev_charge_at_time[t] -ins.rounding_tolerance <= (ins.capacity_over_time[t] - ins.base_load_over_time[t])), "capacity violated at time %d"%t
-
 
     # testing y correctness
     energy_usage = {}
     for k in range(ins.n):
         energy_usage[k] = 0
-        assert sol.y[k] in [0,1], "y is fractional"
+        sum_of_x = 0
+        for c in ins.customer_charging_options[k]:
+            sum_of_x += sol.x[(k,c)]
+            for t in ins.customer_charging_time_path[k,c]:
+                energy_usage[k] += sol.x[(k, c)] * ins.charging_rates[c] * ins.step_length
+                if not fractional_sol:
+                    assert sol.x[(k,c)] in [1,0], "x[%d,%d] is fractional"%(k,c)
+            assert sum_of_x <= 1, "sum X > 1! %f"%sum_of_x
+        if not fractional_sol:
+            assert (energy_usage[k] <= ins.customer_usage[k] and sum_of_x== 0) or (energy_usage[k] >= ins.customer_usage[k] and sum_of_x== 1), "x_c inconsistant"
+            # print "satisfy ratio %d:"%k, energy_usage[k]/ins.customer_usage[k]
+
+    print("solution is feasible!")
+    return total_ev_charge_at_time
+def check_ev_scheduling_sol_feasibility(ins,sol, fractional_sol=False):
+    # testing capacity correcgtness
+    total_ev_charge_at_time = {}
+    for t in np.arange(ins.scheduling_horizon):
+        total_ev_charge_at_time[t] = np.sum([ins.charging_rates[c] * sol.x[(k, c, t)]
+                                                          for k in ins.customers_at_time[t] for c in
+                                                          ins.customer_charging_options[k]])
+        # print total_ev_charge_at_time[t] + ins.base_load_over_time[t]
+        assert (total_ev_charge_at_time[t] -ins.rounding_tolerance <= (ins.capacity_over_time[t] - ins.base_load_over_time[t])), "capacity violated at time %d"%t
+
+    # testing y correctness
+    energy_usage = {}
+    for k in range(ins.n):
+        energy_usage[k] = 0
+        if not fractional_sol:
+            assert sol.y[k] in [0,1], "y is fractional"
         for t in ins.customer_charging_time_path[k]:
             sum_of_x = 0
             for c in ins.customer_charging_options[k]:
                 energy_usage[k] += sol.x[(k, c, t)] * ins.charging_rates[c] * ins.step_length
                 sum_of_x += sol.x[(k,c,t)]
-                assert sol.x[(k,c,t)] in [1,0], "x is fractional"
+                if not fractional_sol:
+                    assert sol.x[(k,c,t)] in [1,0], "x[%d,%d,%d] is fractional"%(k,c,t)
             assert sum_of_x <= 1, "sum X > 1!"
-        assert (energy_usage[k] <= ins.customer_usage[k] and sol.y[k] == 0) or (energy_usage[k] >= ins.customer_usage[k] and sol.y[k] == 1), "y and x are inconsistant"
-        print "satisfy ratio %d:"%k, energy_usage[k]/ins.customer_usage[k]
+        if not fractional_sol:
+            assert (energy_usage[k] <= ins.customer_usage[k] and sol.y[k] == 0) or (energy_usage[k] >= ins.customer_usage[k] and sol.y[k] == 1), "y and x are inconsistant"
+        # print "satisfy ratio %d:"%k, energy_usage[k]/ins.customer_usage[k]
 
     print("solution is feasible!")
+    return total_ev_charge_at_time
 
+def reduce_array_resolution(a, window=4):
+    l = []
+    tmp = 0
+    for i, v in enumerate(a):
+         if i % window != 0 or i == 0:
+             tmp += v
+         else:
+             l.append(tmp/float(window))
+             tmp = v
+    l.append(tmp/float(window))
+    return np.array(l)

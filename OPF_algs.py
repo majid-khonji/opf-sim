@@ -243,8 +243,245 @@ def _solve_remaining(ins, guess_x={}, alg="solve_remaining"):
 
     return sol
 
+def round_EV_scheduling4(ins, guess_x={}, round_x_after_y=True):
 
-def round_EV_scheduling(ins, guess_x={}, round_x_after_y=True):
+    t1 = time.time()
+    sol = max_ev_scheduling_OPT(ins, guess_x=guess_x, fractional=True)
+    frac_sol = copy.deepcopy(sol)
+    sol.frac_sol = frac_sol
+
+    sol.frac_x_comp_count = 0
+    sol.frac_y_comp_count = 0
+    sol.rounded_up_count = 0
+    sol.rounded_down_count = 0
+    sol.count_y_due_to_rounded_x = 0
+    sol.count_rounded_up_y_due_to_rounded_x = 0
+    sol.customer_satisfy_ratio = {}
+
+    energy_usage = {}
+    energy_usage_frac_sol = {}
+    if sol.succeed:
+        # customers = np.setdiff1d(np.arange(ins.n), guess_x)
+        customers = np.arange(ins.n)
+
+        sol.total_ev_charge_at_time_frac_sol = {}
+        for t in np.arange(ins.scheduling_horizon):
+            sol.total_ev_charge_at_time_frac_sol[t] = np.sum([ins.charging_rates[c] * sol.x[(k, c, t)]
+                                                              for k in ins.customers_at_time[t] for c in
+                                                              ins.customer_charging_options[k]])
+        # calculated energy user of each customer
+        for k in customers:
+            energy_usage[k] = 0
+            energy_usage_frac_sol[k] = 0
+            if ins.rounding_tolerance < sol.y[k] < 1 - ins.rounding_tolerance:
+                # sol.y[k] = 0
+                sol.frac_y_comp_count += 1
+                # is_y_rounded = True
+            for t in ins.customer_charging_time_path[k]:
+                for c in ins.customer_charging_options[k]:
+                    energy_usage_frac_sol[k] += sol.x[k, c, t] * ins.charging_rates[c] * ins.step_length
+                    # if is_y_rounded:
+                    #     sol.x[(k, c, t)] = 0
+
+        #### Greedy 4 rounding
+
+        charging_cost = {k:sol.x[(k, c, t)]*ins.cost_rate_matrix[c,t] for k in customers for t in ins.customer_charging_time_path[k] for c in ins.customer_charging_options[k]}
+        list_cost= {k:ins.customer_utilities[k]*sol.y[k]- charging_cost[k] for k in customers}
+        sorted_customers = [k for k, v in sorted(list_cost.iteritems(), key=lambda (k, v): (v, k), reverse=True)]
+
+        total_ev_power_at_time = {t:0 for t in np.arange(ins.scheduling_horizon)}
+        energy_usage = {k:0 for k in customers}
+
+        for k in sorted_customers:
+            time_list_cost= {(c,t): sol.x[k,c,t] for c in ins.customer_charging_options[k] for t in ins.customer_charging_time_path[k]}
+            sorted_time_option = {r:v for r, v in sorted(time_list_cost.iteritems(), key=lambda (r, v): (v, r), reverse=True) if v != 0}
+            for (c,t) in sorted_time_option:
+                if ins.rounding_tolerance < sol.x[(k, c, t)] < 1 - ins.rounding_tolerance:
+                    sol.frac_x_comp_count += 1
+
+                other_chg_options = np.setdiff1d(ins.customer_charging_options[k], [c])
+                total_ev_power_after_rounding_up = total_ev_power_at_time[t] + ins.charging_rates[c]
+
+                usage_after_rounding_up = energy_usage[k] + ins.charging_rates[c]*ins.step_length
+                usage_after_rounding_down = energy_usage[k]
+                if total_ev_power_after_rounding_up <= (
+                            ins.capacity_over_time[t] - ins.base_load_over_time[t]) and usage_after_rounding_down < \
+                        ins.customer_usage[k] :
+                    sol.x[k,c,t] = 1
+                    energy_usage[k] = usage_after_rounding_up
+                    total_ev_power_at_time[t] = total_ev_power_after_rounding_up
+
+                    # print('   + x[%d,%d,%d] rounded up'%(k,c,t), sol.x[k,c,t])
+                    # print('  --- x[%d,%d,%d] rounded down'%(k,c_,t), sol.x[k,c_,t])
+                else:
+                    sol.x[k,c, t] = 0
+                    # print('   + x[%d,%d,%d] rounded down'%(k,c,t), sol.x[k,c,t])
+
+                if sol.x[k,c,t] >= 1-ins.rounding_tolerance:
+                    for c_ in other_chg_options:
+                        sol.x[(k, c_, t)] = 0
+
+
+
+            # set y variable
+            sol.customer_satisfy_ratio[k] = energy_usage[k]/ins.customer_usage[k]
+            if energy_usage[k] < ins.customer_usage[k] - ins.rounding_tolerance:
+                sol.y[k] = 0
+                sol.count_y_due_to_rounded_x += 1
+                for c in ins.customer_charging_options[k]:
+                    for t in ins.customer_charging_time_path[k]:
+                        energy_usage[k] -= sol.x[k, c, t] * ins.charging_rates[c] * ins.step_length
+                        sol.x[(k, c, t)] = 0
+            else:
+                sol.y[k]=1
+                sol.count_rounded_up_y_due_to_rounded_x += 1
+
+        sol.running_time = time.time() - t1
+
+        # calculate new obj
+        obj = 0
+        for k in np.arange(ins.n):
+            obj += ins.customer_utilities[k] * sol.y[k]
+            for c in ins.customer_charging_options[k]:
+                for t in ins.customer_charging_time_path[k]:
+                    obj -= sol.x[(k, c, t)] * ins.cost_rate_matrix[c, t]
+        # calculate P
+        P = {}
+        for t in np.arange(ins.scheduling_horizon):
+            P[t] = ins.base_load_over_time[t]
+            for k in ins.customers_at_time[t]:
+                for c in ins.customer_charging_options[k]:
+                    P[t] += sol.x[(k, c, t)] * ins.charging_rates[c]
+
+        sol.frac_obj = sol.obj
+        sol.obj = obj
+        sol.customer_energy_usage = energy_usage
+        sol.customer_energy_usage_frac_sol = energy_usage_frac_sol
+        sol.P = P
+        sol.ar = sol.obj/sol.frac_obj
+    sol.running_time = time.time() - t1
+    return sol
+
+def round_EV_scheduling3(ins, guess_x={}, round_x_after_y=True):
+
+    t1 = time.time()
+    sol = max_ev_scheduling_OPT(ins, guess_x=guess_x, fractional=True)
+    frac_sol = copy.deepcopy(sol)
+    sol.frac_sol = frac_sol
+
+    sol.frac_x_comp_count = 0
+    sol.frac_y_comp_count = 0
+    sol.rounded_up_count = 0
+    sol.rounded_down_count = 0
+    sol.count_y_due_to_rounded_x = 0
+    sol.count_rounded_up_y_due_to_rounded_x = 0
+    sol.customer_satisfy_ratio = {}
+
+    energy_usage = {}
+    energy_usage_frac_sol = {}
+    if sol.succeed:
+        # customers = np.setdiff1d(np.arange(ins.n), guess_x)
+        customers = np.arange(ins.n)
+
+        sol.total_ev_charge_at_time_frac_sol = {}
+        for t in np.arange(ins.scheduling_horizon):
+            sol.total_ev_charge_at_time_frac_sol[t] = np.sum([ins.charging_rates[c] * sol.x[(k, c, t)]
+                                                              for k in ins.customers_at_time[t] for c in
+                                                              ins.customer_charging_options[k]])
+        # calculated energy user of each customer
+        for k in customers:
+            energy_usage[k] = 0
+            energy_usage_frac_sol[k] = 0
+            if ins.rounding_tolerance < sol.y[k] < 1 - ins.rounding_tolerance:
+                # sol.y[k] = 0
+                sol.frac_y_comp_count += 1
+                # is_y_rounded = True
+            for t in ins.customer_charging_time_path[k]:
+                for c in ins.customer_charging_options[k]:
+                    energy_usage_frac_sol[k] += sol.x[k, c, t] * ins.charging_rates[c] * ins.step_length
+                    # if is_y_rounded:
+                    #     sol.x[(k, c, t)] = 0
+
+        #### Greedy 3 rounding
+
+        charging_cost = {k:sol.x[(k, c, t)]*ins.cost_rate_matrix[c,t] for k in customers for t in ins.customer_charging_time_path[k] for c in ins.customer_charging_options[k]}
+        list_cost= {k:ins.customer_utilities[k]*sol.y[k]- charging_cost[k] for k in customers}
+        sorted_customers = [k for k, v in sorted(list_cost.iteritems(), key=lambda (k, v): (v, k), reverse=True)]
+
+        total_ev_power_at_time = {t:0 for t in np.arange(ins.scheduling_horizon)}
+        energy_usage = {k:0 for k in customers}
+
+        for k in sorted_customers:
+            for t in ins.customer_charging_time_path[k]:
+                options = [sol.x[k, cc, t] for cc in ins.customer_charging_options[k]]
+                max_idx = np.argmax(options)
+                c = ins.customer_charging_options[k][max_idx]
+                if ins.rounding_tolerance < sol.x[(k, c, t)] < 1 - ins.rounding_tolerance:
+                    sol.frac_x_comp_count += 1
+
+                other_chg_options = np.setdiff1d(ins.customer_charging_options[k], [c])
+                total_ev_power_after_rounding_up = total_ev_power_at_time[t] + ins.charging_rates[c]
+
+                usage_after_rounding_up = energy_usage[k] + ins.charging_rates[c]*ins.step_length
+                usage_after_rounding_down = energy_usage[k]
+                if total_ev_power_after_rounding_up <= (
+                            ins.capacity_over_time[t] - ins.base_load_over_time[t]) and usage_after_rounding_down < \
+                        ins.customer_usage[k] :
+                    sol.x[k,c,t] = 1
+                    energy_usage[k] = usage_after_rounding_up
+                    total_ev_power_at_time[t] = total_ev_power_after_rounding_up
+
+                    # print('   + x[%d,%d,%d] rounded up'%(k,c,t), sol.x[k,c,t])
+                        # print('  --- x[%d,%d,%d] rounded down'%(k,c_,t), sol.x[k,c_,t])
+                else:
+                    sol.x[k,c, t] = 0
+                    # print('   + x[%d,%d,%d] rounded down'%(k,c,t), sol.x[k,c,t])
+
+                if sol.x[k,c,t] >= 1-ins.rounding_tolerance:
+                    for c_ in other_chg_options:
+                        sol.x[(k, c_, t)] = 0
+
+
+
+            # set y variable
+            sol.customer_satisfy_ratio[k] = energy_usage[k]/ins.customer_usage[k]
+            if energy_usage[k] < ins.customer_usage[k] - ins.rounding_tolerance:
+                sol.y[k] = 0
+                sol.count_y_due_to_rounded_x += 1
+                for c in ins.customer_charging_options[k]:
+                    for t in ins.customer_charging_time_path[k]:
+                        energy_usage[k] -= sol.x[k, c, t] * ins.charging_rates[c] * ins.step_length
+                        sol.x[(k, c, t)] = 0
+            else:
+                sol.y[k]=1
+                sol.count_rounded_up_y_due_to_rounded_x += 1
+
+        sol.running_time = time.time() - t1
+
+        # calculate new obj
+        obj = 0
+        for k in np.arange(ins.n):
+            obj += ins.customer_utilities[k] * sol.y[k]
+            for c in ins.customer_charging_options[k]:
+                for t in ins.customer_charging_time_path[k]:
+                    obj -= sol.x[(k, c, t)] * ins.cost_rate_matrix[c, t]
+        # calculate P
+        P = {}
+        for t in np.arange(ins.scheduling_horizon):
+            P[t] = ins.base_load_over_time[t]
+            for k in ins.customers_at_time[t]:
+                for c in ins.customer_charging_options[k]:
+                    P[t] += sol.x[(k, c, t)] * ins.charging_rates[c]
+
+        sol.frac_obj = sol.obj
+        sol.obj = obj
+        sol.customer_energy_usage = energy_usage
+        sol.customer_energy_usage_frac_sol = energy_usage_frac_sol
+        sol.P = P
+        sol.ar = sol.obj/sol.frac_obj
+    sol.running_time = time.time() - t1
+    return sol
+def round_EV_scheduling2(ins, guess_x={}, round_x_after_y=True):
 
     t1 = time.time()
     sol = max_ev_scheduling_OPT(ins, guess_x=guess_x, fractional=True)
@@ -263,7 +500,138 @@ def round_EV_scheduling(ins, guess_x={}, round_x_after_y=True):
 
         sol.total_ev_charge_at_time_frac_sol = {}
         for t in np.arange(ins.scheduling_horizon):
-            sol.total_ev_charge_at_time_frac_sol[t] = np.sum([ins.charging_rates[c] * ins.step_length * sol.x[(k, c, t)]
+            sol.total_ev_charge_at_time_frac_sol[t] = np.sum([ins.charging_rates[c] * sol.x[(k, c, t)]
+                                                              for k in ins.customers_at_time[t] for c in
+                                                              ins.customer_charging_options[k]])
+        # round y then all its x's
+        # calculated energy user of each customer
+        for k in customers:
+            energy_usage[k] = 0
+            energy_usage_frac_sol[k] = 0
+            if ins.rounding_tolerance < sol.y[k] < 1 - ins.rounding_tolerance:
+                # sol.y[k] = 0
+                sol.frac_y_comp_count += 1
+                # is_y_rounded = True
+            for t in ins.customer_charging_time_path[k]:
+                for c in ins.customer_charging_options[k]:
+                    energy_usage_frac_sol[k] += sol.x[k, c, t] * ins.charging_rates[c] * ins.step_length
+                    # if is_y_rounded:
+                    #     sol.x[(k, c, t)] = 0
+                    energy_usage[k] += sol.x[k, c, t] * ins.charging_rates[c] * ins.step_length
+
+        #### Greedy rounding
+        total_ev_power_at_time = sol.total_ev_charge_at_time_frac_sol.copy()
+        for t in np.arange(ins.scheduling_horizon):
+            # max_chg_option = {}
+            # for k in ins.customers_at_time[t]:
+            #     options = [sol.x[k, cc, t] for cc in ins.customer_charging_options[k]]
+            #     max_idx = np.argmax(options)
+            #     max_chg_option[k] = ins.customer_charging_options[k][max_idx]
+            # sort customers max x
+            list_x= {(k,c): sol.x[(k, c, t)] for k in ins.customers_at_time[t] for c in ins.customer_charging_options[k]}
+            sorteted_ev_option_pair = [k for k, v in sorted(list_x.iteritems(), key=lambda (k, v): (v, k), reverse=True) if v not in [0,1]]
+            # sorteted_ev_option_pair = [k for k, v in sorted(list_x.iteritems(), key=lambda (k, v): (v, k), reverse=True)]
+            # print 'customers at time ',t, ins.customers_at_time[t]
+            # print 'customers at time ',t, ins.customers_at_time[t]
+            # print 'sorted customers at time ',t,sorted(list_x.iteritems(), key=lambda (k, v): (v, k), reverse=True)
+            # print 'sorted', sorteted_ev_option_pair
+            for (k,c) in sorteted_ev_option_pair:
+                if ins.rounding_tolerance < sol.x[(k, c, t)] < 1 - ins.rounding_tolerance:
+                    sol.frac_x_comp_count += 1
+                    # print((k,c,t), 'enetered', sol.x[k,c,t])
+
+                    other_chg_options = np.setdiff1d(ins.customer_charging_options[k], [c])
+                    rem_option_power = np.sum([sol.x[(k, c_, t)] * ins.charging_rates[c]  for c_ in
+                                               other_chg_options])
+                    total_power_after_rounding = total_ev_power_at_time[t] + (1 - sol.x[k, c, t]) * \
+                                                                              ins.charging_rates[c] - rem_option_power
+
+                    usage_after_rounding_down = energy_usage[k] - sol.x[k,c , t] * ins.charging_rates[c] * ins.step_length
+                    if total_power_after_rounding <= (
+                                ins.capacity_over_time[t] - ins.base_load_over_time[t]) and usage_after_rounding_down < \
+                            ins.customer_usage[k] :
+                        sol.x[k,c,t] = 1
+                        # print('   + x[%d,%d,%d] rounded up'%(k,c,t), sol.x[k,c,t])
+                        for c_ in other_chg_options:
+                            sol.x[(k, c_, t)] = 0
+                            # print('  --- x[%d,%d,%d] rounded down'%(k,c_,t), sol.x[k,c_,t])
+                    else:
+                        sol.x[k,c, t] = 0
+                        # print('   + x[%d,%d,%d] rounded down'%(k,c,t), sol.x[k,c,t])
+                        energy_usage[k] = usage_after_rounding_down
+                        total_power_after_rounding = total_ev_power_at_time[t] - sol.x[k, c, t] * ins.charging_rates[c]
+
+                    total_ev_power_at_time[t] = total_power_after_rounding
+
+        sol.count_y_due_to_rounded_x = 0
+        sol.count_rounded_up_y_due_to_rounded_x = 0
+        sol.customer_satisfy_ratio = {}
+        for k in customers:
+            energy_usage[k] = 0
+            for t in ins.customer_charging_time_path[k]:
+                for c in ins.customer_charging_options[k]:
+                    energy_usage[k] += sol.x[k, c, t] * ins.charging_rates[c] * ins.step_length
+
+        for k in customers:
+            # set y variable
+            sol.customer_satisfy_ratio[k] = energy_usage[k]/ins.customer_usage[k]
+            if energy_usage[k] < ins.customer_usage[k] - ins.rounding_tolerance:
+                sol.y[k] = 0
+                sol.count_y_due_to_rounded_x += 1
+                for c in ins.customer_charging_options[k]:
+                    for t in ins.customer_charging_time_path[k]:
+                        energy_usage[k] -= sol.x[k, c, t] * ins.charging_rates[c]
+                        sol.x[(k, c, t)] = 0
+            else:
+                sol.y[k]=1
+                sol.count_rounded_up_y_due_to_rounded_x += 1
+
+        sol.running_time = time.time() - t1
+
+        # calculate new obj
+        obj = 0
+        for k in np.arange(ins.n):
+            obj += ins.customer_utilities[k] * sol.y[k]
+            for c in ins.customer_charging_options[k]:
+                for t in ins.customer_charging_time_path[k]:
+                    obj -= sol.x[(k, c, t)] * ins.cost_rate_matrix[c, t]
+        # calculate P
+        P = {}
+        for t in np.arange(ins.scheduling_horizon):
+            P[t] = ins.base_load_over_time[t]
+            for k in ins.customers_at_time[t]:
+                for c in ins.customer_charging_options[k]:
+                    P[t] += sol.x[(k, c, t)] * ins.charging_rates[c] * ins.step_length
+
+        sol.frac_obj = sol.obj
+        sol.obj = obj
+        sol.customer_energy_usage = energy_usage
+        sol.customer_energy_usage_frac_sol = energy_usage_frac_sol
+        sol.P = P
+        sol.ar = sol.obj/sol.frac_obj
+    sol.running_time = time.time() - t1
+    return sol
+
+def round_EV_scheduling1(ins, guess_x={}, round_x_after_y=True):
+
+    t1 = time.time()
+    sol = max_ev_scheduling_OPT(ins, guess_x=guess_x, fractional=True)
+    frac_sol = copy.deepcopy(sol)
+    sol.frac_sol = frac_sol
+
+    sol.frac_x_comp_count = 0
+    sol.frac_y_comp_count = 0
+    sol.rounded_up_count = 0
+    sol.rounded_down_count = 0
+    energy_usage = {}
+    energy_usage_frac_sol = {}
+    if sol.succeed:
+        # customers = np.setdiff1d(np.arange(ins.n), guess_x)
+        customers = np.arange(ins.n)
+
+        sol.total_ev_charge_at_time_frac_sol = {}
+        for t in np.arange(ins.scheduling_horizon):
+            sol.total_ev_charge_at_time_frac_sol[t] = np.sum([ins.charging_rates[c] * sol.x[(k, c, t)]
                                                               for k in ins.customers_at_time[t] for c in
                                                               ins.customer_charging_options[k]])
         # round y then all its x's
@@ -304,17 +672,17 @@ def round_EV_scheduling(ins, guess_x={}, round_x_after_y=True):
                     sol.frac_x_comp_count += 1
 
                     other_chg_options = np.setdiff1d(ins.customer_charging_options[k], [max_chg_option[k]])
-                    rem_option_power = np.sum([sol.x[(k, c, t)] * ins.charging_rates[c] * ins.step_length for c in
+                    rem_option_power = np.sum([sol.x[(k, c, t)] * ins.charging_rates[c] for c in
                                                other_chg_options])
                     total_power_after_rounding = total_ev_charge_at_time[t] + (1 - sol.x[k, max_chg_option[k], t]) * \
                                                                               ins.charging_rates[
                                                                                   max_chg_option[
-                                                                                      k]] * ins.step_length - rem_option_power
+                                                                                      k]] - rem_option_power
 
                     usage_after_rounding_down = energy_usage[k] - sol.x[k, max_chg_option[k], t] * ins.charging_rates[
                         max_chg_option[k]] * ins.step_length
                     if total_power_after_rounding <= (
-                        ins.capacity_over_time[t] - ins.base_load_over_time[t]) and usage_after_rounding_down < \
+                                ins.capacity_over_time[t] - ins.base_load_over_time[t]) and usage_after_rounding_down < \
                             ins.customer_usage[k]:
                         sol.x[k, max_chg_option[k], t] = 1
                     else:
@@ -323,7 +691,7 @@ def round_EV_scheduling(ins, guess_x={}, round_x_after_y=True):
                         total_power_after_rounding = total_ev_charge_at_time[t] - sol.x[k, max_chg_option[k], t] * \
                                                                                   ins.charging_rates[
                                                                                       max_chg_option[
-                                                                                          k]] * ins.step_length - rem_option_power
+                                                                                          k]] - rem_option_power
                     for c in other_chg_options:
                         sol.x[(k, c, t)] = 0
 
@@ -363,7 +731,7 @@ def round_EV_scheduling(ins, guess_x={}, round_x_after_y=True):
             P[t] = ins.base_load_over_time[t]
             for k in ins.customers_at_time[t]:
                 for c in ins.customer_charging_options[k]:
-                    P[t] += sol.x[(k, c, t)] * ins.charging_rates[c] * ins.step_length
+                    P[t] += sol.x[(k, c, t)] * ins.charging_rates[c]
 
         sol.frac_obj = sol.obj
         sol.obj = obj
@@ -372,6 +740,121 @@ def round_EV_scheduling(ins, guess_x={}, round_x_after_y=True):
         sol.P = P
         sol.ar = sol.obj/sol.frac_obj
     sol.running_time = time.time() - t1
+    return sol
+
+def round_EV_scheduling_fixed_interval(ins, guess_x={}, round_x_after_y=True):
+
+    t1 = time.time()
+    sol = max_ev_scheduling_OPT_fixed_interval(ins, guess_x=guess_x, fractional=True)
+    frac_sol = copy.deepcopy(sol)
+    sol.frac_sol = frac_sol
+
+    sol.frac_x_comp_count = 0
+    if sol.succeed:
+        # customers = np.setdiff1d(np.arange(ins.n), guess_x)
+        customers = np.arange(ins.n)
+        sol.total_ev_charge_at_time_frac_sol = {}
+
+        obj = 0
+        for k in customers:
+            for c in ins.customer_charging_options[k]:
+                # rounding y
+                if ins.rounding_tolerance < sol.x[k,c] < 1 - ins.rounding_tolerance:
+                    sol.x[k,c]= 0
+                    sol.frac_x_comp_count += 1
+
+
+                    # calculate new obj
+                obj += ins.customer_utilities[k,c] * sol.x[k,c]
+
+
+        sol.running_time = time.time() - t1
+        # calculate P
+        P = {}
+        for t in np.arange(ins.scheduling_horizon):
+            P[t] = ins.base_load_over_time[t]
+            for (k,c) in ins.customers_at_time[t]:
+                P[t] += sol.x[(k, c)] * ins.charging_rates[c]
+
+        sol.frac_obj = sol.obj
+        sol.obj = obj
+        sol.P = P
+        sol.ar = sol.obj/sol.frac_obj
+    sol.running_time = time.time() - t1
+    return sol
+
+# for e-energy 2018
+def max_ev_scheduling_OPT_fixed_interval(ins, guess_x={}, fractional=False, debug=False, tolerance=0.001, alg="min_OPF_OPT"):
+    t1 = time.time()
+    m = gbp.Model("max_ev_scheduling_OPT_fixed_interval")
+    u.gurobi_setting(m)
+    x = {}  # key (i, c, t)
+
+    P = {}
+    # Q = {}
+
+
+    time_path = np.arange(ins.scheduling_horizon)
+    num_of_constraints = 0
+    num_of_constraints_paper_formulation = 0
+
+    for k in np.arange(ins.n):
+        for c in ins.customer_charging_options[k]:
+            if fractional:
+                x[(k, c)] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[(%d,%d)]" % (k, c))
+            else:
+                x[(k, c)] = m.addVar(vtype=gbp.GRB.BINARY, name="x[(%d,%d)]" % (k, c))
+
+    for t in time_path:
+        P[t] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="P_%s" % str(t))
+
+    obj = gbp.quicksum(x[k,c] * ins.customer_utilities[k,c] for k in range(ins.n) for c in ins.customer_charging_options[k])
+    m.setObjective(obj, gbp.GRB.MAXIMIZE)
+    m.update()
+
+    for t in time_path:
+        # capacity constraints
+        ev_charge_list = [x[(k, c)] * (ins.charging_rates[c]) for (k,c) in ins.customers_at_time[t] if len(ins.customers_at_time[t]) != 0]
+        rhs_P = ins.base_load_over_time[t] + gbp.quicksum(ev_charge_list)
+        m.addConstr(P[t], gbp.GRB.EQUAL, rhs_P, "P_%d" % t)
+        m.addConstr(P[t], gbp.GRB.LESS_EQUAL, ins.capacity_over_time[t], "C_%d" % t)
+        num_of_constraints += 2
+        num_of_constraints_paper_formulation += 1
+
+    for k in np.arange(ins.n):
+        # single charging option per customer contraints
+        X = gbp.quicksum([x[(k, c)] for c in ins.customer_charging_options[k]])
+        m.addConstr(X, gbp.GRB.LESS_EQUAL, 1, "sum_c X(%d) <= 1" % (k))
+        num_of_constraints += 1
+        num_of_constraints_paper_formulation += 1
+
+        # box constraints
+        for c in ins.customer_charging_options[k]:
+            m.addConstr(x[(k, c)] >= 0, "x[%s]: lb" % str((k, c)))
+            num_of_constraints += 1
+            num_of_constraints_paper_formulation += 1
+
+    # for k in guess_x.keys():
+    #     m.addConstr(x[k], gbp.GRB.EQUAL, guess_x[k], "x[%d]: guess " % k)
+
+    m.update()
+    # m.write('model.lp')
+    m.optimize()
+
+    sol = a.OPF_EV_sol()
+    sol.running_time = time.time() - t1
+    # sol.gurobi_model = m
+
+    if u.gurobi_handle_errors(m, algname=alg):
+        sol.x = {(k, c): x[(k, c)].x for k in range(ins.n) for c in ins.customer_charging_options[k]}
+        sol.obj = obj.getValue()
+        sol.P = {t: P[t].x for t in np.arange(ins.scheduling_horizon)}
+        sol.number_of_constraints_paper_formulation = num_of_constraints_paper_formulation
+        sol.number_of_constraints = num_of_constraints
+        sol.succeed = True
+    else:
+        sol.succeed = False
+
     return sol
 
 
@@ -417,7 +900,7 @@ def max_ev_scheduling_OPT(ins, guess_x={}, fractional=False, debug=False, tolera
 
     for t in time_path:
         # capacity constraints
-        ev_charge_list = [x[(k, c, t)] * (ins.charging_rates[c] * ins.step_length) for k in ins.customers_at_time[t] for
+        ev_charge_list = [x[(k, c, t)] * (ins.charging_rates[c]) for k in ins.customers_at_time[t] for
                           c in
                           ins.customer_charging_options[k] if len(ins.customers_at_time[t]) != 0]
         rhs_P = ins.base_load_over_time[t] + gbp.quicksum(ev_charge_list)

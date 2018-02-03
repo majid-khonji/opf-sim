@@ -66,7 +66,6 @@ class OPF_EV_instance(object):
         self.charging_rates = [1500, 7000, 150000];
         self.charging_rates_stds = [500, 1500, 10000] # not used
 
-        # used for scheduling demands
         self.scheduling_horizon = 48/.25  # 48 hours
         self.step_length = .25  # 15 mins
 
@@ -75,7 +74,6 @@ class OPF_EV_instance(object):
 
         self.cost_rate_matrix = None  # a 3x(sheduling_horizon/step_length) matrix gives cost of 3 levels at any time step
 
-        # used for multiple-choice scheduling with penalty
         self.customer_charging_options = {}  # a dictionary that maps customers to available charging options [(0, rate),(1,rate),(2,rate)]
         self.customer_utilities = {}  # dictionary customer -> penalty
         self.customer_usage = {}
@@ -88,7 +86,12 @@ class OPF_EV_instance(object):
         self.customer_charging_time_path_edges = {}
         self.customer_charging_time_path = {}
 
+
+        # used for fixed interval case
+        self.customer_charging_cost = {}
+
         self.rounding_tolerance = 0.00001
+
 
 
 class OPF_EV_sol(object):
@@ -125,93 +128,11 @@ class OPF_sol(object):
         self.gurobi_model = None
 
 
-# cons=''|'V'|'C'|
-# gen_cost cost of generation
-def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
-                 n=10, per_unit=True, voltage_deviation_percentage=5,
-                 cus_load_range=(500, 5000), capacity_flag='C_',
-                 ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
-                 v_min=0.81000, cons='', gen_cost=.01):
-    """
-    Generates a random instance for CKP according to ckp_sim requirements
-    """
-
-    assert (scenario[0] in ['F', 'A'] and scenario[1] in ['C', 'U', '1'] and scenario[2] in ['R', 'I', 'M'])
-    # initialize
-    for i in T.nodes():
-        T.node[i]['N'] = []  # customers on node i
-        # T.node[k]['v'] = 0   # voltage
-    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
-
-    ins = OPF_instance()
-    ins.cons = cons
-    ins.gen_cost = gen_cost
-
-    T.node[0]['v'] = ins.v_0
-    ins.topology = T
-    ins.n = n
-    ins.leaf_nodes = T.graph['leaf_nodes']
-    ins.leaf_edges = T.graph['leaf_edges']
-    ins.F = np.random.choice(n, int(round(F_percentage * n)), replace=False)
-    ins.I = np.setdiff1d(np.arange(n), ins.F)
-    if per_unit:
-        ins.v_0 = v_0
-        ins.v_max = v_max
-        ins.v_min = v_min
-    else:
-        ins.v_0 = T.graph['V_base'] ** 2  # remember |V|^2 = v
-        ins.v_max = ins.v_0 * (1 + voltage_deviation_percentage / 100.)
-        ins.v_min = ins.v_0 * (1 - voltage_deviation_percentage / 100.)
-    ins.V_ = (v_0 - v_min) / 2
-    loads_S = None
-    loads_angles = None
-    utilities = None
-
-    r = 0  # index at which non industrial customer start until n
-
-    if scenario[2] == 'R':  # commercial customers
-        loads_S = np.random.uniform(cus_load_range[0], cus_load_range[1], n)
-    elif scenario[2] == 'I':  # industrial
-        loads_S = np.random.uniform(ind_load_range[0], ind_load_range[1], n)
-    elif scenario[2] == 'M':  # mixed
-        r = np.random.randint(0, round(industrial_cus_max_percentage * n))
-        industrial_loads = np.random.uniform(ind_load_range[0], ind_load_range[1], r)
-        customer_loads = np.random.uniform(cus_load_range[0], cus_load_range[1], n - r)
-        loads_S = np.append(industrial_loads, customer_loads)
-
-    if scenario[0] == 'A':  # active  only
-        loads_angles = np.zeros(n)
-    elif scenario[0] == 'F':  # full: active and reactive
-        loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n)
-
-    if scenario[1] == 'C':  # correlated demand/utility
-        utilities = loads_S ** 2
-    elif scenario[1] == 'U':  # uncorrelated
-        util_func = lambda x: random.randrange(0, x)
-        utilities = np.zeros(n)
-        utilities[0:r] = np.array([util_func(ind_load_range[1]) for i in range(r)])
-        utilities[r:n] = np.array([util_func(cus_load_range[1]) for i in range(n - r)])
-
-    if per_unit:
-        ins.loads_S = loads_S / T.graph['S_base']
-    else:
-        ins.loads_S = loads_S
-    ins.loads_angles = loads_angles
-    ins.loads_utilities = utilities
-    ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
-    ins.loads_Q = np.array(map(lambda x, t: x * np.math.sin(t), ins.loads_S, ins.loads_angles))
-
-    # print "angles ", loads_angles
-    # print "util  ", utilities
-    _distribute_customers(ins, capacity_flag=capacity_flag)
-
-    return ins
-
-
 # for electric vehicles sims (e-energy 2018)
 # scenario=[Q|L] Q=quadratic penalty, L = linear penalty
-def sim_instance_ev_scheduling(scenario="L", n=10,
-                               time_steps=48, step_length=.25, num_base_load_household=750, capacity=1000000,
+# here we have fix interval for charge option
+def sim_instance_ev_scheduling_fixed_intervals(scenario="L", n=10,
+                               time_steps=48, step_length=.25, num_base_load_household=650, capacity=1000000,
                                charging_rates=[1500, 7000, 50000], charging_rates_stds=[500, 1000, 10000],
                                initial_SOC_range=(.2, .8), SOC_mu=.5, SOC_std=.3,
                                battery_size_range=(24000., 100000.), battery_size_mu=30000., battery_size_std=10000.,
@@ -219,7 +140,7 @@ def sim_instance_ev_scheduling(scenario="L", n=10,
                                charging_start_time_std=5.,
                                charging_length_mean = 6.,
                                charging_length_std = 2.,
-                               penalty_rate=.37):
+                               penalty_rate=.36):
     ins = OPF_EV_instance()
     ins.charging_rates = charging_rates
     ins.charging_rates_stds = charging_rates_stds
@@ -235,6 +156,9 @@ def sim_instance_ev_scheduling(scenario="L", n=10,
         [0.766, 0.701, 0.658, 0.633, 0.619, 0.627, 0.666, 0.720, 0.806, 0.850, 0.878, 0.919, 0.961, 0.978, 1.009, 1.045,
          1.099, 1.227, 1.251, 1.252, 1.211, 1.131, 0.992, 0.826
          ])
+    # 1/3/2011 - 1/4/2011
+    day1 = np.array([0.717,    0.637,    0.619,    0.593,    0.604,    0.654,    0.747,    0.809,    0.798,    0.778,    0.782,    0.804,    0.828,    0.788,    0.760,    0.767,    0.843,    1.083,    1.173,    1.200,    1.170,    1.099,    0.961,    0.815])
+    day2 = np.array([0.713,    0.657,    0.630,    0.599,    0.616,    0.676,    0.773,    0.827,    0.763,    0.720,    0.709,    0.679,    0.691,    0.676,    0.664,    0.658,    0.738,    0.972,    1.076,    1.118,    1.110,    1.049,    0.908,    0.785])
     two_days = np.append(day1, day2)
 
     ins.base_load_over_time = 1000 * num_base_load_household * np.repeat(two_days, 1 / step_length)
@@ -252,7 +176,7 @@ def sim_instance_ev_scheduling(scenario="L", n=10,
     level2_cost = level1_cost
     # based on TOU-EV-1 every day
     level3_cost = np.zeros(24)
-    level3_cost[12:21] = .37  # super on-peak
+    level3_cost[12:21] = .24  # super on-peak
     level3_cost[21:24] = .13  # off-peak
     level3_cost[0:12] = .13  # off-peak
 
@@ -278,48 +202,167 @@ def sim_instance_ev_scheduling(scenario="L", n=10,
                                    battery_size_std)
     ins.customer_battery_size = battery_size.rvs(n)
 
+
+    for k in np.arange(n):
+        # num_of_options = np.random.randint(1, len(charging_rates) + 1)
+        choices = np.unique(np.random.choice([0, 1, 2], len(charging_rates)))
+        ins.customer_charging_options[k] = choices
+        ins.customer_usage[k] = (1 - ins.customer_SOCs[k]) * ins.customer_battery_size[k]
+
+
+        # distributing customers over time
+
+        for c in ins.customer_charging_options[k]:
+
+            ins.customer_charge_start_at_time[(k,c)] = np.floor(np.random.normal(charging_start_time_mean/step_length, charging_start_time_std))
+            while True:
+                chg_length = ins.customer_usage[k] / (float(ins.charging_rates[c]) * ins.step_length) # in time steps
+                if chg_length+ins.customer_charge_start_at_time[k,c]>= ins.scheduling_horizon:
+                    start = np.random.normal(charging_start_time_mean/step_length, charging_start_time_std)
+                    ins.customer_charge_start_at_time[k,c] = np.floor(np.abs(start))
+                    ins.customer_SOCs[k]= soc.rvs(1)[0]
+                    ins.customer_usage[k] = (1 - ins.customer_SOCs[k]) * ins.customer_battery_size[k]
+                else:
+                    ins.customer_charging_length[k,c] = np.floor(chg_length)
+                    break
+
+
+            chg_path_nodes = np.arange(ins.customer_charge_start_at_time[k,c], ins.customer_charge_start_at_time[k,c] + ins.customer_charging_length[k,c] + 1)
+            chg_path_nodes = chg_path_nodes.astype(int)
+            ins.customer_charging_time_path[k,c] = chg_path_nodes
+            ins.customer_charging_time_path_edges[k,c] = zip(chg_path_nodes, chg_path_nodes[1:])
+            ins.customer_charging_length[k,c] = len(ins.customer_charging_time_path[k,c])
+
+            for t in ins.customer_charging_time_path[k,c]: ins.customers_at_time[t].append((k,c))
+
+            ins.customer_charging_cost[k,c] = np.sum(ins.cost_rate_matrix[c,t] for t in ins.customer_charging_time_path[k,c])
+            if scenario[0] == 'L':  # linear penalty cost
+                ins.customer_utilities[k,c] =  ins.customer_usage[k] / 1000 * penalty_rate - ins.customer_charging_cost[k,c]
+            elif scenario[0] == 'Q':  # quadratic cost
+                ins.customer_utilities[k,c] = (ins.customer_usage[k] / 1000 * penalty_rate) ** 2 - ins.customer_charging_cost[k,c]
+
+        # print("start/length ", ins.customer_at_time[i], ins.customer_charging_length[i])
+    return ins
+
+# for electric vehicles sims (e-energy 2018)
+# scenario=[Q|L] Q=quadratic penalty, L = linear penalty
+def sim_instance_ev_scheduling(scenario="L", n=10,
+                               time_steps=48, step_length=.25, num_base_load_household=650, capacity=2000000,
+                               charging_rates=[1500, 7000, 50000], charging_rates_stds=[500, 1000, 10000],
+                               initial_SOC_range=(.2, .8), SOC_mu=.5, SOC_std=.3,
+                               battery_size_range=(24000., 100000.), battery_size_mu=30000., battery_size_std=10000.,
+                               charging_start_time_mean=18.,
+                               charging_start_time_std=5.,
+                               charging_length_mean = 6.,
+                               charging_length_std = 2.,
+                               penalty_rate=.36):
+    ins = OPF_EV_instance()
+    ins.charging_rates = charging_rates
+    ins.charging_rates_stds = charging_rates_stds
+    # load and supply profile
+    ins.capacity_over_time = np.ones(int(time_steps / step_length)) * capacity
+
+    # average house hold consumption in 1/1/2011 - 1/2/2011 (from DOMSM11.DLP)
+    day1 = np.array(
+        [0.852, 0.788, 0.731, 0.684, 0.649, 0.659, 0.685, 0.755, 0.811, 0.861, 0.873, 0.886, 0.871, 0.833, 0.830, 0.815,
+         0.876, 1.042, 1.093, 1.111, 1.100, 1.063, 0.949, 0.842
+         ])
+    day2 = np.array(
+        [0.766, 0.701, 0.658, 0.633, 0.619, 0.627, 0.666, 0.720, 0.806, 0.850, 0.878, 0.919, 0.961, 0.978, 1.009, 1.045,
+         1.099, 1.227, 1.251, 1.252, 1.211, 1.131, 0.992, 0.826
+         ])
+
+    # 1/3/2011 - 1/4/2011
+    day1 = np.array([0.717,    0.637,    0.619,    0.593,    0.604,    0.654,    0.747,    0.809,    0.798,    0.778,    0.782,    0.804,    0.828,    0.788,    0.760,    0.767,    0.843,    1.083,    1.173,    1.200,    1.170,    1.099,    0.961,    0.815])
+    day2 = np.array([0.713,    0.657,    0.630,    0.599,    0.616,    0.676,    0.773,    0.827,    0.763,    0.720,    0.709,    0.679,    0.691,    0.676,    0.664,    0.658,    0.738,    0.972,    1.076,    1.118,    1.110,    1.049,    0.908,    0.785])
+
+    two_days = np.append(day1, day2)
+
+    ins.base_load_over_time = 1000 * num_base_load_household * np.repeat(two_days, 1 / step_length)
+    ins.scheduling_horizon = int(time_steps / step_length)
+
+    # cost per kWh
+    # based on TOU-D-A week days
+    level1_cost = np.zeros(24)
+    level1_cost[8:14] = .27  # off-peak
+    level1_cost[14:20] = .36  # on-peak
+    level1_cost[20:22] = .27  # off-peak
+    level1_cost[22:24] = .13  # super off-peak
+    level1_cost[0:8] = .13  # super off-peak
+    # same as level 1
+    level2_cost = level1_cost
+    # based on TOU-EV-1 every day
+    level3_cost = np.zeros(24)
+    level3_cost[12:21] = .24  # super on-peak
+    level3_cost[21:24] = .13  # off-peak
+    level3_cost[0:12] = .13  # off-peak
+
+    # cost matrix 3 x time_steps
+    cost = np.append([level1_cost], [level2_cost], axis=0)
+    cost = np.append(cost, [level3_cost], axis=0)
+    cost = np.append(cost, cost, axis=1)
+    cost = np.repeat(cost, 1 / step_length, axis=1)
+    cost = cost * step_length  # for kWh to kW 15 mins
+    ins.cost_rate_matrix = cost
+
+
+    ins.customers_at_time = {t: [] for t in np.arange(ins.scheduling_horizon)}
+
+    ins.n = n
+
+    # distribute demands
+    soc = stats.truncnorm((initial_SOC_range[0] - SOC_mu) / SOC_std, (initial_SOC_range[1] - SOC_mu) / SOC_std, SOC_mu,SOC_std)
+    ins.customer_SOCs = soc.rvs(n)
+    # print('1')
+
+    battery_size = stats.truncnorm((battery_size_range[0] - battery_size_mu) / battery_size_std,
+                                   (battery_size_range[1] - battery_size_mu) / battery_size_std, battery_size_mu,
+                                   battery_size_std)
+    ins.customer_battery_size = battery_size.rvs(n)
+    # print('2')
+
     chg_time = stats.truncnorm((- charging_start_time_mean) / charging_start_time_std,
                                (ins.scheduling_horizon*step_length - 1 - charging_start_time_mean) / charging_start_time_std,
                                charging_start_time_mean / step_length, charging_start_time_std / step_length)
     ins.customer_charge_start_at_time = chg_time.rvs(n).astype(int)
+    # print('3')
 
 
-    for i in np.arange(n):
+    for k in np.arange(n):
         # num_of_options = np.random.randint(1, len(charging_rates) + 1)
         choices = np.unique(np.random.choice([0, 1, 2], len(charging_rates)))
-        ins.customer_charging_options[i] = choices
-        ins.customer_usage[i] = (1 - ins.customer_SOCs[i]) * ins.customer_battery_size[i]
+        ins.customer_charging_options[k] = choices
+        ins.customer_usage[k] = (1 - ins.customer_SOCs[k]) * ins.customer_battery_size[k]
 
         if scenario[0] == 'L':  # linear penalty cost
-            ins.customer_utilities[i] =  ins.customer_usage[i] / 1000 * penalty_rate
+            ins.customer_utilities[k] =  ins.customer_usage[k] / 1000 * penalty_rate
         elif scenario[0] == 'Q':  # quadratic cost
-            ins.customer_utilities[i] = (ins.customer_usage[i] / 1000 * penalty_rate) ** 2
+            ins.customer_utilities[k] = (ins.customer_usage[k] / 1000 * penalty_rate) ** 2
 
         # distributing customers over time
-        min_chg_length = ins.customer_usage[i] / ins.charging_rates[np.max(choices)] # in hours
-        # print("----")
-        # print('param', (np.ceil(min_chg_length) - charging_length_mean)/charging_length_std,
-        #                              (ins.scheduling_horizon*step_length - ins.customer_at_time[i]*step_length - charging_length_mean)/charging_length_std,
-        #                              charging_length_mean/step_length, charging_length_std/step_length)
-        chg_length = stats.truncnorm((np.ceil(min_chg_length) - charging_length_mean) / charging_length_std,
-                                     (ins.scheduling_horizon * step_length - 2 - ins.customer_charge_start_at_time[i] * step_length - charging_length_mean) / charging_length_std,
-                                     charging_length_mean / step_length, charging_length_std / step_length)
+        min_chg_length = ins.customer_usage[k] / (float(ins.charging_rates[np.max(choices)])*ins.step_length )
+
         while True:
-            try:
-                ins.customer_charging_length[i] = np.ceil(chg_length.rvs(1))[0]
-            except ValueError:
-                continue
-            break
-        # print("length", min_chg_length,ins.customer_charging_length[i])
-        # print("start ", ins.customer_at_time[i])
+            chg_length = np.random.normal(charging_length_mean/step_length, charging_length_std/step_length)
+            if chg_length <= min_chg_length or chg_length+ins.customer_charge_start_at_time[k]>= ins.scheduling_horizon:
+                # print "bad chg_length"
+                start = np.random.normal(charging_start_time_mean/step_length, charging_start_time_std)
+                ins.customer_charge_start_at_time[k] = np.floor(np.abs(start))
+                ins.customer_SOCs[k]= soc.rvs(1)[0]
+                ins.customer_usage[k] = (1 - ins.customer_SOCs[k]) * ins.customer_battery_size[k]
+                min_chg_length = ins.customer_usage[k] / (float(ins.charging_rates[np.max(choices)])*ins.step_length )
+            else:
+                ins.customer_charging_length[k] = np.floor(chg_length)
+                break
 
-        chg_path_nodes = np.arange(ins.customer_charge_start_at_time[i], ins.customer_charge_start_at_time[i] + ins.customer_charging_length[i] + 1)
+
+        chg_path_nodes = np.arange(ins.customer_charge_start_at_time[k], ins.customer_charge_start_at_time[k] + ins.customer_charging_length[k] + 1)
         chg_path_nodes = chg_path_nodes.astype(int)
-        ins.customer_charging_time_path[i] = chg_path_nodes
-        ins.customer_charging_time_path_edges[i] = zip(chg_path_nodes, chg_path_nodes[1:])
-        ins.customer_charging_length[i] = len(ins.customer_charging_time_path[i])
+        ins.customer_charging_time_path[k] = chg_path_nodes
+        ins.customer_charging_time_path_edges[k] = zip(chg_path_nodes, chg_path_nodes[1:])
+        ins.customer_charging_length[k] = len(ins.customer_charging_time_path[k])
 
-        for t in ins.customer_charging_time_path[i]: ins.customers_at_time[t].append(i)
+        for t in ins.customer_charging_time_path[k]: ins.customers_at_time[t].append(k)
 
         # print("start/length ", ins.customer_at_time[i], ins.customer_charging_length[i])
     return ins
@@ -411,6 +454,88 @@ def sim_instance_sch(scenario="FCM", time_steps=24, capacity=2000000, F_percenta
 
     return ins
 
+
+# cons=''|'V'|'C'|
+# gen_cost cost of generation
+def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.2566370614359172),
+                 n=10, per_unit=True, voltage_deviation_percentage=5,
+                 cus_load_range=(500, 5000), capacity_flag='C_',
+                 ind_load_range=(300000, 1000000), industrial_cus_max_percentage=.2, v_0=1, v_max=1.21,
+                 v_min=0.81000, cons='', gen_cost=.01):
+    """
+    Generates a random instance for CKP according to ckp_sim requirements
+    """
+
+    assert (scenario[0] in ['F', 'A'] and scenario[1] in ['C', 'U', '1'] and scenario[2] in ['R', 'I', 'M'])
+    # initialize
+    for i in T.nodes():
+        T.node[i]['N'] = []  # customers on node i
+        # T.node[k]['v'] = 0   # voltage
+    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
+
+    ins = OPF_instance()
+    ins.cons = cons
+    ins.gen_cost = gen_cost
+
+    T.node[0]['v'] = ins.v_0
+    ins.topology = T
+    ins.n = n
+    ins.leaf_nodes = T.graph['leaf_nodes']
+    ins.leaf_edges = T.graph['leaf_edges']
+    ins.F = np.random.choice(n, int(round(F_percentage * n)), replace=False)
+    ins.I = np.setdiff1d(np.arange(n), ins.F)
+    if per_unit:
+        ins.v_0 = v_0
+        ins.v_max = v_max
+        ins.v_min = v_min
+    else:
+        ins.v_0 = T.graph['V_base'] ** 2  # remember |V|^2 = v
+        ins.v_max = ins.v_0 * (1 + voltage_deviation_percentage / 100.)
+        ins.v_min = ins.v_0 * (1 - voltage_deviation_percentage / 100.)
+    ins.V_ = (v_0 - v_min) / 2
+    loads_S = None
+    loads_angles = None
+    utilities = None
+
+    r = 0  # index at which non industrial customer start until n
+
+    if scenario[2] == 'R':  # commercial customers
+        loads_S = np.random.uniform(cus_load_range[0], cus_load_range[1], n)
+    elif scenario[2] == 'I':  # industrial
+        loads_S = np.random.uniform(ind_load_range[0], ind_load_range[1], n)
+    elif scenario[2] == 'M':  # mixed
+        r = np.random.randint(0, round(industrial_cus_max_percentage * n))
+        industrial_loads = np.random.uniform(ind_load_range[0], ind_load_range[1], r)
+        customer_loads = np.random.uniform(cus_load_range[0], cus_load_range[1], n - r)
+        loads_S = np.append(industrial_loads, customer_loads)
+
+    if scenario[0] == 'A':  # active  only
+        loads_angles = np.zeros(n)
+    elif scenario[0] == 'F':  # full: active and reactive
+        loads_angles = np.random.uniform(load_theta_range[0], load_theta_range[1], n)
+
+    if scenario[1] == 'C':  # correlated demand/utility
+        utilities = loads_S ** 2
+    elif scenario[1] == 'U':  # uncorrelated
+        util_func = lambda x: random.randrange(0, x)
+        utilities = np.zeros(n)
+        utilities[0:r] = np.array([util_func(ind_load_range[1]) for i in range(r)])
+        utilities[r:n] = np.array([util_func(cus_load_range[1]) for i in range(n - r)])
+
+    if per_unit:
+        ins.loads_S = loads_S / T.graph['S_base']
+    else:
+        ins.loads_S = loads_S
+    ins.loads_angles = loads_angles
+    ins.loads_utilities = utilities
+    ins.loads_P = np.array(map(lambda x, t: x * np.math.cos(t), ins.loads_S, ins.loads_angles))
+    ins.loads_Q = np.array(map(lambda x, t: x * np.math.sin(t), ins.loads_S, ins.loads_angles))
+
+    # print "angles ", loads_angles
+    # print "util  ", utilities
+    _distribute_customers(ins, capacity_flag=capacity_flag)
+
+    return ins
 
 # returns T  of type nx.Graph()
 # loss C_ or L flags for T are not set

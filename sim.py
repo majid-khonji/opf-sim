@@ -11,10 +11,124 @@ import OPF_algs as oo
 import logging
 
 # sim for EV-scheduling (E-Energy 2018)
-def sim_ev(scenario="L", max_n=1000, step_n=50, start_n=100, reps=40, dry_run=False,
+def sim_ev_fixed_interval(scenario="L", max_n=1000, step_n=50, start_n=100, reps=40, capacity=1000000, dry_run=False,
+           dump_dir="results/dump/"):
+    name = "EV:[%s]__fixed_int_max_n=%d_step_n=%d_start_n=%d_reps=%d_capacity=%d" % (
+        scenario, max_n, step_n, start_n, reps,capacity)
+    ### set up variables
+    assert (max_n % step_n == 0)
+    logger = logging.getLogger()
+    logger.setLevel(logging.ERROR)
+
+    t1 = time.time()
+    #####
+
+    round_EV_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_ar = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_frac_x_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    round_EV_frac_com_percentage = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+
+    frac_OPT_EV_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    frac_OPT_EV_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    frac_OPT_EV_num_of_constraints = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+
+    failure_count = {}
+    failure_OPT_count = {}
+
+    for n in range(start_n, max_n + 1, step_n):
+        for i in range(reps):
+            elapsed_time = time.time() - t1
+            m, s = divmod(elapsed_time, 60)
+            h, m = divmod(m, 60)
+            print "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+            print name
+            print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+
+            success = False
+            failure_count[(n,i)] = 0
+            failure_OPT_count[(n,i)] = 0
+            while success == False:
+                ins = ii.sim_instance_ev_scheduling_fixed_intervals(scenario=scenario, n=n, capacity=capacity)
+
+                sol_round = oo.round_EV_scheduling_fixed_interval(ins)
+                sol_opt = sol_round.frac_sol
+
+                if sol_opt.succeed == False:
+                    failure_OPT_count[(n,i)] += 1
+                    print "\n─── too small obj: [retry count %d]\n" % failure_OPT_count[(n,i)]
+                    elapsed_time = time.time() - t1
+                    m, s = divmod(elapsed_time, 60)
+                    h, m = divmod(m, 60)
+                    print name
+                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+                    continue
+                ##############
+
+                ### OPT
+                frac_OPT_EV_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
+                frac_OPT_EV_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
+                frac_OPT_EV_num_of_constraints[(n - start_n + step_n) / step_n - 1, i] = sol_opt.number_of_constraints_paper_formulation
+                print "OPT obj:              %15.2f  |  time: %5.3f" % (
+                    sol_opt.obj, sol_opt.running_time)
+
+                ### round_EV
+                sol_round.ar = sol_round.ar
+                print "round_EV obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_round.obj, sol_round.running_time, sol_round.ar)
+
+                round_EV_obj[(n - start_n + step_n) / step_n - 1, i] = sol_round.obj
+                round_EV_time[(n - start_n + step_n) / step_n - 1, i] = sol_round.running_time
+                round_EV_ar[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
+                round_EV_frac_x_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_x_comp_count
+                round_EV_frac_com_percentage[(n - start_n + step_n) / step_n - 1, i] = (sol_round.frac_x_comp_count+sol_round.frac_x_comp_count)/float(sol_opt.number_of_constraints_paper_formulation)
+
+                ##############
+                if sol_opt.succeed == False or sol_round.succeed == False:
+                    failure_count[(n,i)] += 1
+                    print "\n─── Failure in solving one of the problems: [retry count %d]" % failure_count[(n,i)]
+                    print "sol_opt.succeed: ", sol_opt.succeed
+                    print "sol_round.succeed: ", sol_round.succeed
+                    print ''
+
+                    elapsed_time = time.time() - t1
+                    m, s = divmod(elapsed_time, 60)
+                    h, m = divmod(m, 60)
+                    print name
+                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+                    continue
+                success = True
+                print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+
+        # intermediate saving
+        fin_time = time.time() - t1
+        if dry_run == False:
+            np.savez(dump_dir + name,
+                     failure_count=failure_count,
+                     failure_EV_count=failure_OPT_count,
+                     round_EV_obj=round_EV_obj,
+                     round_EV_ar=round_EV_ar,
+                     round_EV_time=round_EV_time,
+                     round_EV_frac_x_count=round_EV_frac_x_count,
+                     round_EV_frac_com_percentage=round_EV_frac_com_percentage,
+                     frac_EV_obj=frac_OPT_EV_obj,
+                     frac_EV_time=frac_OPT_EV_time,
+                     frac_OPT_EV_num_of_constraints=frac_OPT_EV_num_of_constraints,
+                     fin_time=fin_time)
+
+    m, s = divmod(fin_time, 60)
+    h, m = divmod(m, 60)
+    print "\n=== simulation finished in %d:%02d:%02d ===\n" % (h, m, s)
+
+    return name
+
+
+# sim for EV-scheduling (E-Energy 2018)
+def sim_ev(scenario="L", max_n=1000, step_n=50, start_n=100, reps=40, capacity=1000000, dry_run=False,
             dump_dir="results/dump/"):
-    name = "EV:[%s]__max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
-        scenario, max_n, step_n, start_n, reps)
+    name = "EV:[%s]__alg4_max_n=%d_step_n=%d_start_n=%d_reps=%d_capacity=%d" % (
+        scenario, max_n, step_n, start_n, reps,capacity)
     ### set up variables
     assert (max_n % step_n == 0)
     logger = logging.getLogger()
@@ -54,9 +168,9 @@ def sim_ev(scenario="L", max_n=1000, step_n=50, start_n=100, reps=40, dry_run=Fa
             failure_count[(n,i)] = 0
             failure_OPT_count[(n,i)] = 0
             while success == False:
-                ins = ii.sim_instance_ev_scheduling(scenario=scenario, n=n)
+                ins = ii.sim_instance_ev_scheduling(scenario=scenario, n=n, capacity=capacity)
 
-                sol_round = oo.round_EV_scheduling(ins)
+                sol_round = oo.round_EV_scheduling4(ins)
                 sol_opt = sol_round.frac_sol
 
                 if sol_opt.succeed == False:
@@ -87,7 +201,7 @@ def sim_ev(scenario="L", max_n=1000, step_n=50, start_n=100, reps=40, dry_run=Fa
                 round_EV_ar[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
                 round_EV_frac_x_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_x_comp_count
                 round_EV_frac_y_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_y_comp_count
-                round_EV_frac_com_percentage[(n - start_n + step_n) / step_n - 1, i] = (sol_round.frac_x_comp_count+sol_round.frac_x_comp_count)/sol_opt.number_of_constraints_paper_formulation
+                round_EV_frac_com_percentage[(n - start_n + step_n) / step_n - 1, i] = (sol_round.frac_x_comp_count+sol_round.frac_x_comp_count)/float(sol_opt.number_of_constraints_paper_formulation)
                 round_EV_x_down_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.rounded_up_count
                 round_EV_x_up_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.rounded_down_count
                 round_EV_count_y_due_to_rounded_x[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
