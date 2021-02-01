@@ -11,11 +11,14 @@ except ImportError:
     logging.warning("Grubi not available!!")
 
 
-def gurobi_setting(m):
+def gurobi_setting(m, epsilon=None):
     m.setParam("OutputFlag", 0)
-    m.setParam("TimeLimit", 150)
-    m.setParam("MIPGapAbs", 0.00001)
-    m.setParam("IntFeasTol",0.00001)
+    m.setParam("TimeLimit", 200)
+    if epsilon != None:
+        m.setParam("MIPGap", epsilon/(1-epsilon))
+        # m.setParam("MIPGap", epsilon)
+    # m.setParam("MIPGapAbs", 0.00001)
+    # m.setParam("IntFeasTol",0.00001)
     m.setParam("DualReductions", 0) # without this, sometimes it returns error 4 (infeasible or unbounded)
     # m.setParam("MIPGapAbs", 0)
     # m.setParam("MIPGap", 0)
@@ -243,3 +246,29 @@ def reduce_array_resolution(a, window=4):
              tmp = v
     l.append(tmp/float(window))
     return np.array(l)
+
+
+# quick feasbility test using the linearized model
+def check_opf_sol_feasibility(ins,x):
+
+    T = ins.topology
+
+    # testing capacity correctness
+    for e in T.edges():
+        rhs_P =  np.sum([x[k] * ins.loads_P[k] for k in np.intersect1d(T[e[0]][e[1]]['K'], x.keys())])
+        rhs_Q =  np.sum([x[k] * ins.loads_Q[k] for k in np.intersect1d(T[e[0]][e[1]]['K'], x.keys())])
+
+
+        if rhs_P**2 + rhs_Q**2 > T[e[0]][e[1]]['C'] ** 2:
+            # print("solution is not feasible!")
+            logging.warning("solution not feasible: Capacity violation")
+            return False
+    # testing voltage constraints
+    for l in ins.leaf_nodes:
+        C_V = np.sum([ins.Q[(k, l)] * x[k] for k in x.keys()])
+        v_j = 1-2*C_V
+        if ins.v_min > v_j:
+            logging.warning("solution not feasible: Voltage violation")
+            return False
+    return True
+

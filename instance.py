@@ -41,7 +41,12 @@ class OPF_instance(object):
         self.leaf_nodes = {}  # leaf nodes
         self.cons = ''  # means both: voltage and capacity
         self.gen_cost = 1
+
+        # used for constrained
         self.drop_l_terms = False
+
+        # used for objectives
+        self.drop_l_terms_obj = True
 
         # used for scheduling demands
         self.scheduling_horizon = 24
@@ -471,7 +476,7 @@ def sim_instance(T, scenario="FCM", F_percentage=0.0, load_theta_range=(0, 1.256
     for i in T.nodes():
         T.node[i]['N'] = []  # customers on node i
         # T.node[k]['v'] = 0   # voltage
-    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
+    # nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
 
     ins = OPF_instance()
     ins.cons = cons
@@ -544,8 +549,12 @@ def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base=5000
     if filename == 'test-feeders/13-node.csv' or filename == 'test-feeders/13-node-per-unit.csv':
         S_base = 8000000
         V_base = 11000
+        m = 13
+    else:
+        m = 123
     # T = nx.Graph()
     T = nx.DiGraph()
+    T.graph["m"] = m
     T.graph["S_base"] = S_base
     T.graph["V_base"] = V_base
     with open(filename) as csvfile:
@@ -559,15 +568,19 @@ def network_csv_load(filename='test-feeders/123-node-line-data.csv', S_base=5000
             T[A][B]['C'] = float(row['C (p.u.)'])
 
     # print T.edges()
-    nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
-    nx.set_edge_attributes(T, 'L', {k: 0 for k in T.edges()})  # loss upper bound
-    nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
-    nx.set_node_attributes(T, 'path', {k: nx.shortest_path(T, 0, k) for k in T.nodes()})
-    leaf_nodes = [l for l, d in T.degree().items() if d == 1][1:]
+    attrs_edges = {k:{'K':[], 'L': 0} for k in T.edges()}
+    attrs_nodes = {k:{'depth':0, 'path': nx.shortest_path(T, 0, k)} for k in T.nodes()}
+    nx.set_edge_attributes(T, attrs_edges)
+    nx.set_node_attributes(T, attrs_nodes)
+    # nx.set_edge_attributes(T, 'K', {k: [] for k in T.edges()})  # customers who's demands pass through edge e
+    # nx.set_edge_attributes(T, 'L', {k: 0 for k in T.edges()})  # loss upper bound
+    # nx.set_node_attributes(T, 'depth', {k: 0 for k in T.nodes()})
+    # nx.set_node_attributes(T, 'path', {k: nx.shortest_path(T, 0, k) for k in T.nodes()})
+    leaf_nodes = [l for l, d in T.degree() if d == 1][1:]
     T.graph['leaf_nodes'] = leaf_nodes
     T.graph['leaf_edges'] = [(i, nx.predecessor(T, 0, i)[0]) for i in leaf_nodes]
     max_depth = 0
-    for i in T.nodes()[1:]:
+    for i in list(T.nodes())[1:]:
         T.node[i]['depth'] = len(nx.shortest_path(T, 0, i)) - 1
         if T.node[i]['depth'] > max_depth: max_depth = T.node[i]['depth']
     logging.info('max depth  = %d' % max_depth)
@@ -839,10 +852,10 @@ def _distribute_customers(ins, capacity_flag='C_'):
     n = ins.n
 
     for k in range(n):
-        attached_node = np.random.choice(T.nodes()[1:])
+        attached_node = np.random.choice(list(T.nodes())[1:])
         parent = nx.predecessor(T, 0, attached_node)[0]
         while ins.loads_S[k] > T[parent][attached_node][capacity_flag]:
-            attached_node = np.random.choice(T.nodes()[1:])
+            attached_node = np.random.choice(list(T.nodes())[1:])
             parent = nx.predecessor(T, 0, attached_node)[0]
 
         T.node[attached_node]['N'].append(k)

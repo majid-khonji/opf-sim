@@ -10,7 +10,7 @@ import s_maxOPF_algs as ss
 import OPF_algs as oo
 import logging
 
-# sim for EV-scheduling (E-Energy 2018)
+# sim for EV-scheduling (E-Energy 2018 and SmartGridComm 2018)
 def sim_ev_fixed_interval(scenario="L", max_n=1000, step_n=50, start_n=100, reps=40, capacity=1000000, dry_run=False,
            dump_dir="results/dump/"):
     name = "EV:[%s]__fixed_int_max_n=%d_step_n=%d_start_n=%d_reps=%d_capacity=%d" % (
@@ -492,17 +492,207 @@ def sim_FnT(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=10
     return name
 
 
+#############################################
+#############################################
+#############################################
+#############################################
+#############################################
+def sim_TCNS18_PTAS(scenario="FCR", max_resample=100, n=2500, F_percentage=0.0, max_e=.9, step_e=.1, start_e=.1, reps=40, dry_run=False,
+                    dump_dir="results/dump/", topology=123):
+    name = "TCNS18_PTAS:[%s]__topology=%d__max_resample=%d__n=%d__F_percentage=%.2f_max_e=%.2f_step_e=%.2f_start_e=%.2f_reps=%d" % (
+        scenario, topology,max_resample,n, F_percentage, max_e, step_e, start_e, reps)
+    ### set up variables
+    logger = logging.getLogger()
+    logger.setLevel(logging.ERROR)
 
+    cons = ''
+    t1 = time.time()
+    #####
+
+
+    num_rows = int((max_e + step_e)/step_e)- 1
+    round_OPF_obj = np.zeros((num_rows, reps))
+    round_OPF_time = np.zeros((num_rows, reps))
+    round_OPF_frac_count = np.zeros((num_rows, reps))
+    round_OPF_frac_percentage = np.zeros((num_rows, reps))
+    round_OPF_ar = np.zeros((num_rows, reps))
+    round_OPF_ar2= np.zeros((num_rows, reps))
+    round_OPF_try_count= np.zeros((num_rows, reps))
+
+    no_LP_round_OPF_obj = np.zeros((num_rows, reps))
+    no_LP_round_OPF_time = np.zeros((num_rows, reps))
+    no_LP_round_OPF_ar = np.zeros((num_rows, reps))
+    no_LP_round_OPF_try_count = np.zeros((num_rows, reps))
+    no_LP_round_OPF_frac_count = np.zeros((num_rows, reps))
+    no_LP_round_OPF_frac_percentage = np.zeros((num_rows, reps))
+
+    frac_OPF_obj = np.zeros((num_rows, reps))
+    frac_OPF_time = np.zeros((num_rows, reps))
+    frac_OPF_ar = np.zeros((num_rows, reps))
+
+    OPT_time = np.zeros((num_rows, reps))
+    OPT_obj = np.zeros((num_rows, reps))
+    OPT_ones_count = np.zeros((num_rows, reps))
+
+    failure_count = {}
+    failure_less_then_one_opt_obj_count = {}
+
+    for e in np.arange(start_e, max_e + step_e, step_e):
+        for i in np.arange(reps):
+            elapsed_time = time.time() - t1
+            m, s = divmod(elapsed_time, 60)
+            h, m = divmod(m, 60)
+            row = int((e - start_e + step_e)/step_e - 1 )
+            print "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+            print name
+            print u"├── e=%1.2f\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (e, i + 1, h, m, s)
+
+            success = False
+            failure_count[(e, i)] = 0
+            failure_less_then_one_opt_obj_count[(e, i)] = 0
+            while success == False:
+                T = None
+                if topology == 13:
+                    T = ii.network_csv_load(filename='test-feeders/13-node.csv')
+                elif topology == 123:
+                    T = ii.network_csv_load(filename='test-feeders/feeder123-ieee.csv')
+
+                ins = ii.sim_instance(T, scenario=scenario, n=n, F_percentage=F_percentage)
+
+                ### opt
+                sol_opt = oo.min_OPF_OPT(ins,epsilon=e)
+                OPT_time[row, i] = sol_opt.running_time
+                OPT_obj[row, i] = sol_opt.obj
+                OPT_ones_count[row, i] = sol_opt.ones_comp_count
+
+                print "OPT obj:              %15.2f  |  time: %5.3f" % (
+                    sol_opt.obj, sol_opt.running_time)
+                ##############
+
+                ### frac_OPF
+                sol_frac = oo.min_OPF_OPT(ins, fractional=True)
+                # some times the fractional is not well-rounded
+                if sol_frac > sol_opt:
+                    sol_frac.obj = sol_opt.obj
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance:
+                    sol_frac.ar = 1
+                else:
+                    sol_frac.ar = sol_frac.obj / sol_opt.obj
+                print "frac_OPF obj:         %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_frac.obj, sol_frac.running_time, sol_frac.ar)
+
+
+                frac_OPF_obj[row, i] = sol_frac.obj
+                frac_OPF_time[row, i] = sol_frac.running_time
+                frac_OPF_ar[row, i] = sol_frac.ar
+                ##############
+
+
+
+                ### round_OPF
+                sol_round = oo.PTAS_rand_sample(ins, epsilon=e, max_tries=max_resample)
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance or -ins.rounding_tolerance <= sol_round.obj <= ins.rounding_tolerance:
+                    sol_round.obj = 0
+                    sol_round.ar = 1
+                    sol_round.ar2 = 1
+                else:
+                    sol_round.ar = sol_round.obj / sol_opt.obj
+                    sol_round.ar2 = sol_round.obj / sol_frac.obj
+                print "round_OPF obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_round.obj, sol_round.running_time, sol_round.ar)
+
+                round_OPF_obj[row, i] = sol_round.obj
+                round_OPF_time[row, i] = sol_round.running_time
+                round_OPF_ar[row, i] = sol_round.ar
+                round_OPF_ar2[row, i] = sol_round.ar2
+                round_OPF_try_count[row, i] = sol_round.try_count
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance or -ins.rounding_tolerance <= sol_round.obj <= ins.rounding_tolerance:
+                    round_OPF_frac_count[row, i] = 0
+                    round_OPF_frac_percentage[row, i] = 0
+                else:
+                    round_OPF_frac_count[row, i] = sol_round.frac_comp_count
+                    round_OPF_frac_percentage[row, i] = sol_round.frac_comp_percentage
+                ##############
+
+                ### no LP round_OPF
+                sol_no_LP = oo.PTAS_rand_sample(ins,use_LP=False, epsilon=e, max_tries=max_resample)
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance or -ins.rounding_tolerance <= sol_no_LP.obj <= ins.rounding_tolerance:
+                    sol_no_LP.ar = 1
+                    sol_no_LP.obj = 0
+                else:
+                    sol_no_LP.ar = sol_no_LP.obj / sol_opt.obj
+                print "round_no_LP_OPF obj:  %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
+                    sol_no_LP.obj, sol_no_LP.running_time, sol_no_LP.ar)
+
+                no_LP_round_OPF_obj[row, i] = sol_no_LP.obj
+                no_LP_round_OPF_time[row, i] = sol_no_LP.running_time
+                no_LP_round_OPF_ar[row, i] = sol_no_LP.ar
+                no_LP_round_OPF_try_count[row, i] = sol_no_LP.try_count
+                no_LP_round_OPF_frac_count[row, i] = sol_no_LP.frac_comp_count
+                no_LP_round_OPF_frac_percentage[row, i] = sol_no_LP.frac_comp_percentage
+                ##############
+
+                if sol_opt.succeed == False or sol_round.succeed == False or sol_no_LP.succeed == False or sol_frac == False or sol_round.obj < sol_frac.obj:
+                    failure_count[(e, i)] += 1
+                    print "\n─── Failure in solving one of the problems: [retry count %d]" % failure_count[(e, i)]
+                    print "sol_opt.succeed: ", sol_opt.succeed
+                    print "sol_round.succeed: ", sol_round.succeed
+                    print "sol_no_LP.succeed: ", sol_no_LP.succeed
+                    print "sol_frac.succeed: ", sol_frac.succeed
+                    print "frac < round: ", sol_round.obj > sol_frac.obj
+                    print ''
+
+                    elapsed_time = time.time() - t1
+                    m, s = divmod(elapsed_time, 60)
+                    h, m = divmod(m, 60)
+                    print name
+                    print u"├── e=%.2f\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (e, i + 1, h, m, s)
+                    continue
+                success = True
+                print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+
+            # intermediate saving
+            if dry_run == False:
+                np.savez(dump_dir + name,
+                         failure_count=failure_count,
+                         failure_less_then_one_opt_obj_count=failure_less_then_one_opt_obj_count,
+                         round_OPF_obj=round_OPF_obj,
+                         round_OPF_ar=round_OPF_ar,
+                         round_OPF_ar2=round_OPF_ar2,
+                         round_OPF_time=round_OPF_time,
+                         round_OPF_frac_count=round_OPF_frac_count,
+                         round_OPF_frac_percentage=round_OPF_frac_percentage,
+                         no_LP_round_OPF_obj=no_LP_round_OPF_obj,
+                         no_LP_round_OPF_ar=no_LP_round_OPF_ar,
+                         no_LP_round_OPF_time=no_LP_round_OPF_time,
+                         no_LP_round_OPF_frac_count=no_LP_round_OPF_frac_count,
+                         no_LP_round_OPF_frac_percentage=no_LP_round_OPF_frac_percentage,
+                         frac_OPF_obj=frac_OPF_obj,
+                         frac_OPF_ar=frac_OPF_ar,
+                         frac_OPF_time=frac_OPF_time,
+                         OPT_obj=OPT_obj,
+                         OPT_ones_count=OPT_ones_count,
+                         OPT_time=OPT_time)
+    fin_time = time.time() - t1
+    m, s = divmod(fin_time, 60)
+    h, m = divmod(m, 60)
+    print "\n=== simulation finished in %d:%02d:%02d ===\n" % (h, m, s)
+
+    return name
 ######################################################
 ######################################################
 ######################################################
 ######################################################
 ######################################################
 # topology = [13 | 123]
-def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=100, reps=40, dry_run=False,
+def sim_TCNS18(scenario="FCR", alg='PTAS', max_resample=10,epsilon=0.1, F_percentage=0.0, max_n=3500, step_n=100, start_n=100, reps=40, dry_run=False,
             dump_dir="results/dump/", topology=123):
-    name = "TPS:[%s]__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
-        scenario, topology, F_percentage, max_n, step_n, start_n, reps)
+    if alg == 'PTAS':
+        name = "TCNS18:[%s]__max_resample=%d__epsilon=%1.2f__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
+            scenario, max_resample, epsilon, topology, F_percentage, max_n, step_n, start_n, reps)
+    else:
+        name = "TCNS18:[%s]__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (
+        scenario,  topology, F_percentage, max_n, step_n, start_n, reps)
     ### set up variables
     assert (max_n % step_n == 0)
     logger = logging.getLogger()
@@ -532,6 +722,7 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
 
     OPT_time = np.zeros(((max_n - start_n + step_n) / step_n, reps))
     OPT_obj = np.zeros(((max_n - start_n + step_n) / step_n, reps))
+    OPT_ones_count = np.zeros(((max_n - start_n + step_n) / step_n, reps))
 
     failure_count = {}
     failure_less_then_one_opt_obj_count = {}
@@ -561,15 +752,16 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
                 sol_opt = oo.min_OPF_OPT(ins)
                 OPT_time[(n - start_n + step_n) / step_n - 1, i] = sol_opt.running_time
                 OPT_obj[(n - start_n + step_n) / step_n - 1, i] = sol_opt.obj
-                if sol_opt.obj < 1:
-                    failure_less_then_one_opt_obj_count[(n,i)] += 1
-                    print "\n─── too small obj: [retry count %d]\n" % failure_less_then_one_opt_obj_count[(n,i)]
-                    elapsed_time = time.time() - t1
-                    m, s = divmod(elapsed_time, 60)
-                    h, m = divmod(m, 60)
-                    print name
-                    print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
-                    continue
+                OPT_ones_count[(n - start_n + step_n) / step_n - 1, i] = sol_opt.ones_comp_count
+                # if sol_opt.obj < 1:
+                #     failure_less_then_one_opt_obj_count[(n,i)] += 1
+                #     print "\n─── too small obj: [retry count %d]\n" % failure_less_then_one_opt_obj_count[(n,i)]
+                #     elapsed_time = time.time() - t1
+                #     m, s = divmod(elapsed_time, 60)
+                #     h, m = divmod(m, 60)
+                #     print name
+                #     print u"├── n=%d\n├── rep=%d\n└── elapsed time %d:%02d:%02d \n" % (n, i + 1, h, m, s)
+                #     continue
 
                 print "OPT obj:              %15.2f  |  time: %5.3f" % (
                     sol_opt.obj, sol_opt.running_time)
@@ -580,7 +772,10 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
                 # some times the fractional is not well-rounded
                 if sol_frac > sol_opt:
                     sol_frac.obj = sol_opt.obj
-                sol_frac.ar = sol_frac.obj / sol_opt.obj
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance:
+                    sol_frac.ar = 1
+                else:
+                    sol_frac.ar = sol_frac.obj / sol_opt.obj
                 print "frac_OPF obj:         %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
                     sol_frac.obj, sol_frac.running_time, sol_frac.ar)
 
@@ -593,9 +788,18 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
 
 
                 ### round_OPF
-                sol_round = oo.round_OPF(ins)
-                sol_round.ar = sol_round.obj / sol_opt.obj
-                sol_round.ar2 = sol_round.obj / sol_frac.obj
+                if alg == "PTAS":
+                    sol_round = oo.PTAS_rand_sample(ins,epsilon=epsilon, max_tries=max_resample)
+                else:
+                    sol_round = oo.round_OPF(ins, frac_sol=sol_frac)
+
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance or -ins.rounding_tolerance <= sol_round.obj <= ins.rounding_tolerance:
+                    sol_round.obj = 0
+                    sol_round.ar = 1
+                    sol_round.ar2 = 1
+                else:
+                    sol_round.ar = sol_round.obj / sol_opt.obj
+                    sol_round.ar2 = sol_round.obj / sol_frac.obj
                 print "round_OPF obj:        %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
                     sol_round.obj, sol_round.running_time, sol_round.ar)
 
@@ -603,14 +807,26 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
                 round_OPF_time[(n - start_n + step_n) / step_n - 1, i] = sol_round.running_time
                 round_OPF_ar[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar
                 round_OPF_ar2[(n - start_n + step_n) / step_n - 1, i] = sol_round.ar2
-                round_OPF_frac_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_comp_count
-                round_OPF_frac_percentage[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_comp_percentage
-
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance or -ins.rounding_tolerance <= sol_round.obj <= ins.rounding_tolerance:
+                    round_OPF_frac_count[(n - start_n + step_n) / step_n - 1, i] = 0
+                    round_OPF_frac_percentage[(n - start_n + step_n) / step_n - 1, i] = 0
+                else:
+                    round_OPF_frac_count[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_comp_count
+                    round_OPF_frac_percentage[(n - start_n + step_n) / step_n - 1, i] = sol_round.frac_comp_percentage
                 ##############
 
                 ### no LP round_OPF
-                sol_no_LP = oo.round_OPF(ins, use_LP=False)
-                sol_no_LP.ar = sol_no_LP.obj / sol_opt.obj
+                if alg == "PTAS":
+                    sol_no_LP = oo.PTAS_rand_sample(ins,epsilon=epsilon, max_tries=max_resample,  use_LP=False)
+                else:
+                    sol_no_LP = oo.round_OPF(ins, frac_sol=sol_frac, use_LP=False)
+
+
+                if -ins.rounding_tolerance <= sol_opt.obj <= ins.rounding_tolerance or -ins.rounding_tolerance <= sol_no_LP.obj <= ins.rounding_tolerance:
+                    sol_no_LP.ar = 1
+                    sol_no_LP.obj = 0
+                else:
+                    sol_no_LP.ar = sol_no_LP.obj / sol_opt.obj
                 print "round_no_LP_OPF obj:  %15.2f  |  time: %5.3f  |  [AR: %5.3f ]" % (
                     sol_no_LP.obj, sol_no_LP.running_time, sol_no_LP.ar)
 
@@ -628,7 +844,7 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
                     print "sol_round.succeed: ", sol_round.succeed
                     print "sol_no_LP.succeed: ", sol_no_LP.succeed
                     print "sol_frac.succeed: ", sol_frac.succeed
-                    print "frac > round: ", sol_round.obj < sol_frac.obj
+                    print "frac < round: ", sol_round.obj < sol_frac.obj
                     print ''
 
                     elapsed_time = time.time() - t1
@@ -660,6 +876,7 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
                      frac_OPF_ar=frac_OPF_ar,
                      frac_OPF_time=frac_OPF_time,
                      OPT_obj=OPT_obj,
+                     OPT_ones_count=OPT_ones_count,
                      OPT_time=OPT_time)
     x = np.arange(start_n, max_n + 1, step_n)
     x = x.reshape((len(x), 1))
@@ -702,6 +919,7 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
                  no_LP_round_OPF_frac_count=no_LP_round_OPF_frac_count,
                  no_LP_round_OPF_frac_percentage=no_LP_round_OPF_frac_percentage,
                  OPT_obj=OPT_obj,
+                 OPT_ones_count=OPT_ones_count,
                  OPT_time=OPT_time,
                  frac_OPF_obj=frac_OPF_obj,
                  frac_OPF_ar=frac_OPF_ar,
@@ -736,6 +954,7 @@ def sim_TCNS2(scenario="FCR", F_percentage=0.0, max_n=3500, step_n=100, start_n=
 ######################################################
 
 # topology = [38 | 123] (IEEE topology. The code can be cleaned up in future, only csv file should be given)
+# greedy algorithm
 def sim_TCNS16(scenario="FCR", F_percentage=0.0, max_n=1500, step_n=100, start_n=100, reps=40, dry_run=True,
                dump_dir="results/dump/", is_adaptive_loss=True, topology=123):
     name = "%s__topology=%d__F_percentage=%.2f_max_n=%d_step_n=%d_start_n=%d_reps=%d" % (

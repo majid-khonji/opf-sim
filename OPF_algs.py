@@ -8,6 +8,7 @@ import networkx as nx
 import util as u
 import itertools
 import copy
+import sys
 
 try:
     import gurobipy as gbp
@@ -15,42 +16,139 @@ except ImportError:
     logging.warning("Grubi not available!!")
 
 
-def PTAS(ins, guess_set_size=1, use_LP=True):
+# minimization version (naive bruteforce)
+# consider all integral demands
+# mode=['naive', 'frac_only']
+def PTAS(ins, epsilon = 0.0001, max_guessed_set_size=None, use_LP=True, mode='frac_only'):
+
+    if max_guessed_set_size == None:
+        max_guessed_set_size = ins.n
+
+
+    t1 = time.time()
+
     best_sol = a.OPF_sol();
     best_sol.obj = np.inf
 
+    solf = min_OPF_OPT(ins, guess_x={}, fractional=True)
     sol = round_OPF(ins, use_LP=use_LP, guess_x={})
-    if sol.succeed:
-        print best_sol.obj
-        if sol.obj < best_sol.obj and sol.succeed:
-            best_sol = sol
+    if not sol.succeed:
+        return sol
 
-    for size in np.arange(1, guess_set_size + 1):
-        for guess_I1 in itertools.combinations(np.arange(ins.n), size):
+    enumeration_set = ins.I
+    if mode == 'frac_only':
+        enumeration_set = [k for k in ins.I if ins.rounding_tolerance < solf.x[k] < 1 - ins.rounding_tolerance]
+
+    try_count = 1
+    if(sol.obj <= (1+epsilon)* solf.obj ):
+        sol.try_count = try_count
+        sol.try_residue_count = 1
+        best_sol.running_time = time.time() - t1
+        return sol
+
+    if sol.obj < best_sol.obj and sol.succeed:
+        best_sol = sol
+        best_sol.guess_I1 = {}
+        best_sol.guess_I2 = {}
+
+    solution_found = False
+
+    try_residue_count = 0
+    for size in np.arange(1, max_guessed_set_size + 1):
+        for guess_I1 in itertools.combinations(enumeration_set, size):
+            try_count += 1
+            try_residue_count += 1
             min_util = np.min([ins.loads_utilities[k] for k in guess_I1])
-            guess_I2 = {k: 0 for k in ins.I if ins.loads_utilities[k] <= min_util}
+            guess_I2 = {k: 0 for k in np.setdiff1d(ins.I, guess_I1) if ins.loads_utilities[k] <= min_util}
             guess_x = {k: 1 for k in guess_I1}
+
             for k in guess_I2:
                 guess_x[k] = 0
 
+            print guess_I1
+            print len(guess_x)
             sol = round_OPF(ins, use_LP=use_LP, guess_x=guess_x)
             if sol.succeed:
-                print best_sol.obj
-                if sol.obj < best_sol.obj and sol.succeed:
+                if sol.obj < best_sol.obj:
                     best_sol = sol
+                    best_sol.guess_I1 = guess_I1
+                    best_sol.guess_I2 = guess_I2
+                print 'obj', best_sol.obj, '| frac_obj', solf.obj, "| acheived e", 1-((1+epsilon)* solf.obj)/best_sol.obj
+                if best_sol.obj <= (1+epsilon)* solf.obj:
+                    print "solution found!"
+                    solution_found = True
+                    break
+        if solution_found:
+            break
+        try_residue_count = 0
+
+    best_sol.running_time = time.time() - t1
+    best_sol.try_count = try_count
+    best_sol.try_residue_count = try_residue_count
+    best_sol.guessed_set_size = size
     return best_sol
 
+def PTAS_rand_sample(ins, epsilon = 0.1, max_tries = np.infty, use_LP=True, mode='frac_only'):
+
+    #assert (2*ins.topology.graph["m"]+len(ins.leaf_nodes))/epsilon < ins.n, 'Very small epsilon %f'% epsilon
+    max_set_size = (2*ins.topology.graph["m"]+len(ins.leaf_nodes))/epsilon
+
+    if max_set_size > ins.n:
+        max_set_size = ins.n
+
+
+    t1 = time.time()
+
+
+    solf = min_OPF_OPT(ins, guess_x={}, fractional=True)
+    best_sol = round_OPF(ins, use_LP=use_LP, guess_x={})
+
+    try_count = 1
+    guess_I1 = {}
+    guess_I2 = {}
+    size=0
+
+    while best_sol.obj > (1+epsilon)* solf.obj and best_sol.succeed and try_count <= max_tries:
+        size = np.random.randint(1,max_set_size)
+        guess_I1 = np.random.choice(ins.n, size, replace=False)
+        #print guess_I1
+        # print 'obj', best_sol.obj, '| frac_obj', solf.obj, "| acheived e", 1-((1+epsilon)* solf.obj)/best_sol.obj
+        sys.stdout.write('.')
+        try_count += 1
+        min_util = np.min([ins.loads_utilities[k] for k in guess_I1])
+        guess_I2 = {k: 0 for k in np.setdiff1d(ins.I, guess_I1) if ins.loads_utilities[k] <= min_util}
+        guess_x = {k: 1 for k in guess_I1}
+        for k in guess_I2:
+            guess_x[k] = 0
+
+        #print len(guess_x), 'size =', size
+
+        if u.check_opf_sol_feasibility(ins, guess_x):
+            sol = round_OPF(ins, use_LP=use_LP, guess_x=guess_x)
+            if sol.succeed:
+                if sol.obj < best_sol.obj:
+                    best_sol = sol
+    print ''
+    best_sol.guess_I1 = guess_I1
+    best_sol.guess_I2 = guess_I2
+    best_sol.running_time = time.time() - t1
+    best_sol.try_count = try_count
+    best_sol.guessed_set_size = size
+    return best_sol
 
 # we use the same objective as min_OPF_OPT: penalty + loss + 1
 # some nasty tricks: if solve_remaining fails, we take loss from the fractional solution (its a bound, right?)
-def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
+def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round', frac_sol = None):
     T = ins.topology
     t1 = time.time()
     sol = None
-    if not ins.util_max_objective:
-        sol = min_OPF_OPT(ins, guess_x=guess_x, fractional=True)
-    elif ins.util_max_objective and ins.drop_l_terms:
-        sol = max_sOPF_OPT(ins, guess_x=guess_x, fractional=True)
+    if frac_sol == None:
+        if not ins.util_max_objective:
+            sol = min_OPF_OPT(ins, guess_x=guess_x, fractional=True)
+        elif ins.util_max_objective and ins.drop_l_terms:
+            sol = max_sOPF_OPT(ins, guess_x=guess_x, fractional=True)
+    else:
+        sol = copy.copy(frac_sol)
     sol.frac_comp_count = 0
     if sol.succeed:
         # print 'calling lp'
@@ -66,22 +164,32 @@ def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
                 if ins.rounding_tolerance < sol.x[k] < 1 - ins.rounding_tolerance:
                     sol.x[k] = 0
                     sol.frac_comp_count += 1
+                elif sol.x[k] >= 1-ins.rounding_tolerance:
+                    sol.x[k] = 1
+                elif sol.x[k] <= ins.rounding_tolerance:
+                    sol.x[k] = 0
+            sol.running_time = time.time() - t1
             if ins.util_max_objective:
                 obj = 0
                 for k in range(ins.n):
                     obj += sol.x[k] * ins.loads_utilities[k]
                 sol.obj = obj
                 sol.frac_comp_percentage = sol.frac_comp_count / (ins.n * 1.) * 100
-                sol.running_time = time.time() - t1
                 return sol
-
             else:
-                obj = 1
-                for k in range(ins.n):
-                    obj += (1 - sol.x[k]) * ins.loads_utilities[k]
-                if not ins.drop_l_terms:
+                if ins.drop_l_terms_obj:
+                    obj = 0
+                    for k in range(ins.n):
+                        obj += (1 - sol.x[k]) * ins.loads_utilities[k]
+                    sol.obj = obj
+                    sol.frac_comp_percentage = sol.frac_comp_count / (ins.n * 1.) * 100
+                    return sol
+
+                else:
+                    obj = 0
                     sol2 = _solve_remaining(ins, guess_x=sol.x)
                     if sol2.succeed:
+                        pass
                         obj += T.graph['S_base'] * sol2.obj
                     else:
                         obj += T.graph['S_base'] * u.obj_min_loss_penalty(ins, sol, output='loss')
@@ -100,7 +208,7 @@ def round_OPF(ins, use_LP=True, guess_x={}, alg='min_OPF_round'):
 def _LP(ins, sol, customers=[], alg='lp'):
     t1 = time.time()
     T = ins.topology
-    m = gbp.Model("qcp")
+    m = gbp.Model("lp")
     u.gurobi_setting(m)
 
     x = {}
@@ -1029,29 +1137,32 @@ def max_sOPF_OPT(ins, guess_x={}, fractional=False, debug=False, tolerance=0.001
     return sol
 
 
+# updated for TCNS18
 # for TPS 2017
 # it has some quick and dirty tricks to make l tight
-def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False, tolerance=0.001, alg="min_OPF_OPT"):
+def min_OPF_OPT(ins, guess_x={}, epsilon=None, fractional=False, debug=False, tolerance=0.001, alg="min_OPF_OPT"):
     assert (ins.cons == '' or ins.cons == 'V' or ins.cons == 'C')
     t1 = time.time()
     T = ins.topology
     m = gbp.Model("min_OPF_OPT")
 
-    u.gurobi_setting(m)
+    u.gurobi_setting(m, epsilon)
     x = {}
     v = {}
     v[0] = ins.v_0
     l = {}
     P = {}
     Q = {}
-    # dummy_p = {}; dummy_q = {}
+
+    for k in guess_x.keys():
+        x[k] = guess_x[k]
     if fractional:
-        for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
+        for k in np.setdiff1d(ins.I, guess_x.keys()): x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
     else:
-        for k in ins.I: x[k] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % k)
+        for k in np.setdiff1d(ins.I, guess_x.keys()): x[k] = m.addVar(vtype=gbp.GRB.BINARY, name="x[%d]" % k)
 
     for k in ins.F: x[k] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="x[%d]" % k)
-    for i in T.nodes()[1:]:
+    for i in list(T.nodes())[1:]:
         v[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="v_%d" % i)
         # dummy_p[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_p_%d" % i)
         # dummy_q[i] = m.addVar(vtype=gbp.GRB.CONTINUOUS, name="dummy_q_%d" % i)
@@ -1065,9 +1176,12 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False, tolerance=0.001,
     # obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n)) + (ins.gen_cost) * P[
     #     root_edge]
 
+    # penalty minimization
+    obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n))
+
     # loss minimization
-    obj = 1 + gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n)) + \
-          T.graph['S_base'] * gbp.quicksum([l[e] * (T[e[0]][e[1]]['z'][0]) for e in T.edges()])
+    # obj = gbp.quicksum((1 - x[k]) * ins.loads_utilities[k] for k in range(ins.n)) + \
+    #       T.graph['S_base'] * gbp.quicksum([l[e] * (T[e[0]][e[1]]['z'][0]) for e in T.edges()])
     m.setObjective(obj, gbp.GRB.MINIMIZE)
 
     for e in T.edges():
@@ -1120,8 +1234,8 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False, tolerance=0.001,
         for i in ins.I:
             m.addConstr(x[i] <= 1, "x[%d]: ub")
             # m.addConstr(x[i] >= 0, "x[%d]: lb")
-    for k in guess_x.keys():
-        m.addConstr(x[k], gbp.GRB.EQUAL, guess_x[k], "x[%d]: guess " % k)
+    # for k in guess_x.keys():
+    #     m.addConstr(x[k], gbp.GRB.EQUAL, guess_x[k], "x[%d]: guess " % k)
 
     m.update()
     # m.write('model.lp')
@@ -1132,14 +1246,20 @@ def min_OPF_OPT(ins, guess_x={}, fractional=False, debug=False, tolerance=0.001,
     sol.gurobi_model = m
 
     if u.gurobi_handle_errors(m, algname=alg):
-        sol.x = {k: x[k].x for k in range(ins.n)}
+        sol.x = {k: x[k].x for k in np.setdiff1d(range(ins.n), guess_x.keys())}
+        for k in guess_x.keys():
+            sol.x[k] = x[k]
         sol.obj = obj.getValue()
+        sol.ones_comp_count = len([k for k in ins.I if sol.x[k] >= 1- ins.rounding_tolerance])
+        sol.int_comp_count = len([k for k in ins.I if sol.x[k] >= 1- ins.rounding_tolerance or sol.x[k] <= ins.rounding_tolerance])
+        sol.frac_comp_count = len(ins.I) - sol.int_comp_count
         sol.l = l
         sol.P = P
         sol.Q = Q
         sol.v = v
-        first_node = T.edge[0].keys()[0]
+        first_node = dict(T[0]).keys()[0]
         sol.P_0 = P[(0, first_node)].X
+        sol.try_count = 1
         sol.succeed = True
     else:
         sol.succeed = False
@@ -1222,7 +1342,7 @@ def min_OPF_OPT_erroneous(ins, guess_x={}, fractional=False, debug=False, tolera
     if u.gurobi_handle_errors(m, algname=alg):
         sol.obj = obj.getValue()
         sol.x = {k: x[k].x for k in range(ins.n)}
-        sol.idx = [k for k in ins.I if x[k].x == 1]
+        sol.idx = [k for k in ins.I if sol.x[k] == 1]
         sol.l = l
         sol.P = P
         sol.Q = Q

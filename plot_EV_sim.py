@@ -74,7 +74,7 @@ def _subfig_obj(filename, ax, dump_dir='results/dump',color='b',y_lim=None, star
     if color == 'b':
         __box_plot(ax, alg_data, name='Greedy-SSP', darkcolor='dodgerblue', lightcolor='lightblue')
     else:
-        __box_plot(ax, alg_data, name='PTAS-A-EVSP', darkcolor='green', lightcolor='lightgreen')
+        __box_plot(ax, alg_data, name='PTAS-A-SSP', darkcolor='green', lightcolor='lightgreen')
     # __box_plot(ax, no_LP_alg_data, name='No LP', darkcolor='green', lightcolor='lightgreen')
     __box_plot(ax, opt_data, name='Gurobi Frac.',darkcolor='darkred',lightcolor='indianred')
 
@@ -142,9 +142,9 @@ def plot_obj(fixed=True, dump_dir="results/dump/", fig_dir="results/"):
 
     plt.tight_layout(pad=1, w_pad=0.2, h_pad=.2)
     if fixed:
-        plt.savefig(fig_dir +"EV_fixed_obj.pdf", bbox_inches='tight')
+        plt.savefig(fig_dir +"EV-Sys18_fixed_obj.pdf", bbox_inches='tight')
     else:
-        plt.savefig(fig_dir +"EV_obj.pdf", bbox_inches='tight')
+        plt.savefig(fig_dir +"EV-Sys18_obj.pdf", bbox_inches='tight')
 
 
 
@@ -213,7 +213,7 @@ def plot_frac_comp_count(dump_dir="results/dump/", y_label='Percentage of fracti
     Q_name = 'EV:[Q]__fixed_int_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
     data = {'L': L_name, 'Q':Q_name}
     _subfig_scenarios(data, ax=ax1, percentage=False, field='round_EV_frac_com_percentage',  dump_dir=dump_dir, start_n=100, step_n=50, max_n=1000)
-    ax1.set_title("PTAS-A-EVSP")
+    ax1.set_title("PTAS-A-SSP")
     ax1.legend(bbox_to_anchor=(.35, 1.21, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
 
@@ -234,7 +234,7 @@ def plot_ar(fixed=True, dump_dir="results/dump/", y_label='Approximation Ratio',
     Q_name = 'EV:[Q]__fixed_int_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
     data = {'L': L_name, 'Q':Q_name}
     _subfig_scenarios(data, ax=ax1, percentage=False, field='round_EV_ar', y_lim=[0, 1.1], dump_dir=dump_dir, start_n=100, step_n=50, max_n=1000)
-    ax1.set_title("PTAS-A-EVSP")
+    ax1.set_title("PTAS-A-SSP")
     ax1.legend(bbox_to_anchor=(.35, 1.21, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
     L_name = 'EV:[L]__alg4_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
@@ -249,7 +249,7 @@ def plot_ar(fixed=True, dump_dir="results/dump/", y_label='Approximation Ratio',
 
 
     plt.tight_layout(pad=1, w_pad=.2, h_pad=0.2)
-    plt.savefig(fig_dir +"EV_ar_both.pdf", bbox_inches='tight')
+    plt.savefig(fig_dir +"EV-Sys18_ar_both.pdf", bbox_inches='tight')
 
 def plot_time(fixed=True, dump_dir="results/dump/", y_label='Running Time (sec.)', fig_dir="results/"):
     plt.ioff()
@@ -260,8 +260,8 @@ def plot_time(fixed=True, dump_dir="results/dump/", y_label='Running Time (sec.)
     L_name = 'EV:[L]__fixed_int_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
     Q_name = 'EV:[Q]__fixed_int_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
     data = {'L': L_name, 'Q':Q_name}
-    _subfig_scenarios(data, ax=ax1, cheat_value=20, percentage=False, field='round_EV_time', y_lim=None, dump_dir=dump_dir, start_n=100, step_n=50, max_n=1000)
-    ax1.set_title("PTAS-A-EVSP")
+    _subfig_scenarios(data, ax=ax1, cheat_value=1, percentage=False, field='round_EV_time', y_lim=None, dump_dir=dump_dir, start_n=100, step_n=50, max_n=1000)
+    ax1.set_title("PTAS-A-SSP")
     ax1.legend(bbox_to_anchor=(.35, 1.21, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
 
     L_name = 'EV:[L]__alg4_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
@@ -276,8 +276,31 @@ def plot_time(fixed=True, dump_dir="results/dump/", y_label='Running Time (sec.)
 
 
     plt.tight_layout(pad=1, w_pad=.2, h_pad=0.2)
-    plt.savefig(fig_dir +"EV_time_both.pdf", bbox_inches='tight')
+    plt.savefig(fig_dir +"EV-Sys18_time_both.pdf", bbox_inches='tight')
 
+def plot_time_and_ar(fixed=True, dump_dir="results/dump/", y_label='Running Time (sec.)', fig_dir="results/"):
+    plt.ioff()
+    # plt.clf()
+
+    fig, (ax1,ax2) = plt.subplots(1, 2, sharex='col', figsize=(7, 2.5))
+
+    L_name = 'EV:[L]__fixed_int_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
+    Q_name = 'EV:[Q]__fixed_int_max_n=1000_step_n=50_start_n=100_reps=40_capacity=1000000'
+    data = {'L': L_name, 'Q':Q_name}
+    _subfig_scenarios(data, ax=ax1, cheat_value=1, percentage=False, field='round_EV_ar', y_lim=None, dump_dir=dump_dir, start_n=100, step_n=50, max_n=1000)
+    ax1.set_title("Approximation Ratio")
+    ax1.legend(bbox_to_anchor=(.35, 1.21, 0, 0), loc=3, ncol=4, borderaxespad=0., fontsize=12)
+
+    _subfig_scenarios(data, ax=ax2, cheat_value=15, percentage=False, field='round_EV_time', y_lim=None, dump_dir=dump_dir, start_n=100, step_n=50, max_n=1000)
+    ax2.set_title("Time (Sec.)")
+
+
+    fig.text(0.5, 0.01, 'Number of EVs', ha='center', va='center', fontsize=14)
+#    fig.text(-0.02, 0.5, y_label, ha='center', va='center', rotation='vertical', fontsize=14)
+
+
+    plt.tight_layout(pad=1, w_pad=.2, h_pad=0.2)
+    plt.savefig(fig_dir +"Smartgridcomm_time_ar.pdf", bbox_inches='tight')
 def plot_base_load(fixed = True, fig_dir="results/"):
     # plt.ioff()
     day1 = np.array(
@@ -356,19 +379,19 @@ def plot_base_load(fixed = True, fig_dir="results/"):
         11625. ,   6000. ,   4500. ,   4500. ,   1875. ,   1500. ])
 
 
-    fig, (ax) = plt.subplots(1, 1, sharex='col', figsize=(7, 2.0))
+    fig, (ax) = plt.subplots(1, 1, sharex='col', figsize=(6, 2.2))
 
 
 
     p0,=ax.plot(650*two_days, label = "Base Load", color='darkgray')
-    p4,=ax.plot(650*two_days+powerf/1000., label="Gurobi Frac. (SSP)",color='darkred', alpha=.7)
+    # p4,=ax.plot(650*two_days+powerf/1000., label="Gurobi Frac. (SSP)",color='darkred', alpha=.7)
     p1,= ax.plot(650*two_days+power_fix/1000., label="PTAS-A-EVSP", color='green')
-    p3,=ax.plot(650*two_days+powerf_fix/1000., label="Gurobi Frac. (A-EVSP)",color='coral',alpha=.7)
-    p2,=ax.plot(650*two_days+power/1000., label="Greedy-SSP", color='dodgerblue')
+    p3,=ax.plot(650*two_days+powerf_fix/1000., label="Gurobi Frac.",color='coral',alpha=.7)
+    # p2,=ax.plot(650*two_days+power/1000., label="Greedy-SSP", color='dodgerblue')
     # ax.plot(650*two_days+powero/1000., label="OPT EV Charge + Base Load")
 
     plt.axvline(x=18,linestyle="--", color='darkgray', linewidth=1)
-    ax.legend(bbox_to_anchor=(.00, 1.05, 0, 0), loc=3, ncol=3, borderaxespad=0., fontsize=11.5)
+    ax.legend(bbox_to_anchor=(.03, 1.05, 0, 0), loc=3, ncol=3, borderaxespad=0., fontsize=11.5)
 
     ax.grid(True)
     major_ticks = np.arange(0, 49, 2)
@@ -395,7 +418,7 @@ def plot_base_load(fixed = True, fig_dir="results/"):
 
 
     plt.tight_layout(pad=1, w_pad=.2, h_pad=0.2)
-    plt.savefig(fig_dir +"EV_load.pdf", bbox_inches='tight')
+    plt.savefig(fig_dir +"Smartgridcomm_EV_load.pdf", bbox_inches='tight')
 
 
 if __name__ == "__main__":
